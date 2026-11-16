@@ -38,6 +38,7 @@
     if (!Array.isArray(p.materiel)) p.materiel = ["corps"];
     if (!p.valides || typeof p.valides !== "object") p.valides = {};
     if (!Array.isArray(p.poidsLog)) p.poidsLog = [];
+    if (!p.journal || typeof p.journal !== "object") p.journal = {};
     ["nom", "taille", "poids", "age", "sexe", "note"].forEach(function (k) { if (p[k] == null) p[k] = ""; });
     if (!p.activite) p.activite = "1.55";
     return p;
@@ -71,6 +72,7 @@
   }
   var etat = charger();
   function sauver() {
+    etat.version = 2;
     try { localStorage.setItem(CLE, JSON.stringify(etat)); } catch (e) {}
   }
   function profil() {
@@ -127,11 +129,137 @@
   }
 
 
-  var V = "5";
+  var V = "6";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
   }
+  // ---------- Séries, historique ----------
+  function dateCourte(d) {
+    return new Date(d + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  }
+  function nombre(v) {
+    var n = parseFloat(String(v).replace(",", "."));
+    return isFinite(n) ? n : 0;
+  }
+  function uniques(tab) {
+    return tab.filter(function (x, i) { return tab.indexOf(x) === i; });
+  }
+  function resumeSeries(s) {
+    var kgs = uniques(s.filter(function (x) { return x.k > 0; }).map(function (x) { return x.k; }));
+    return s.length + " série" + (s.length > 1 ? "s" : "") + " : " + s.map(function (x) { return x.r; }).join(" / ") + " reps" + (kgs.length ? " avec " + kgs.join(" / ") + " kg" : "");
+  }
+  function derniereSeance(p, id) {
+    var jour = aujourdhui();
+    var ds = Object.keys(p.journal).sort().reverse();
+    for (var i = 0; i < ds.length; i++) {
+      var s = p.journal[ds[i]][id];
+      if (ds[i] !== jour && s && s.length) return { date: ds[i], series: s };
+    }
+    return null;
+  }
+  function infoSeries(p, e) {
+    var auj = p.journal[aujourdhui()];
+    if (auj && auj[e.id] && auj[e.id].length) return '<div class="doux fait">Saisi : ' + esc(resumeSeries(auj[e.id])) + "</div>";
+    var d = derniereSeance(p, e.id);
+    return d ? '<div class="doux">Dernière fois (' + esc(dateCourte(d.date)) + ") : " + esc(d.series.map(function (x) { return x.r; }).join(" / ")) + (d.series.some(function (x) { return x.k > 0; }) ? " reps avec charge" : " reps") + "</div>" : "";
+  }
+  function blocSeries(p, e, series, note) {
+    var h = '<div class="carte verre" id="series"><h3>Mes séries d\'aujourd\'hui</h3>';
+    var der = derniereSeance(p, e.id);
+    if (der) h += '<p class="doux">Dernière fois (' + esc(dateCourte(der.date)) + ") : " + esc(resumeSeries(der.series)) + "</p>";
+    if (note) h += '<p class="doux fait">' + esc(note) + "</p>";
+    series.forEach(function (s, i) {
+      h += '<div class="serie"><span class="num">S' + (i + 1) + '</span><input type="number" class="in-r" inputmode="numeric" min="0" placeholder="reps" aria-label="Répétitions, série ' + (i + 1) + '" value="' + esc(s.r || "") + '"><input type="number" class="in-k" inputmode="decimal" min="0" step="0.5" placeholder="kg" aria-label="Charge en kg, série ' + (i + 1) + '" value="' + esc(s.k || "") + '"></div>';
+    });
+    h += '<p class="doux">Charge (kg) : laisse vide pour le poids du corps. Les champs sont préremplis avec ta dernière séance.</p>';
+    h += '<div class="rang"><button class="second" data-serie-plus="' + e.id + '">+ série</button><button class="second" data-serie-moins="' + e.id + '">- série</button></div>';
+    return h + '<button data-serie-enreg="' + e.id + '">Enregistrer ces séries</button></div>';
+  }
+  function lireSeriesDom() {
+    var r = [].slice.call(document.querySelectorAll("#series .in-r")), k = [].slice.call(document.querySelectorAll("#series .in-k"));
+    return r.map(function (x, i) { return { r: x.value, k: k[i].value }; });
+  }
+  function chartLigne(pts, moy, unite) {
+    if (!pts.length) return "";
+    var W = 320, H = 160, gl = 38, gr = 10, gh = 12, gb = 24;
+    var ys = pts.map(function (q) { return q.y; }).concat((moy || []).map(function (q) { return q.y; }));
+    var mn = Math.min.apply(null, ys), mx = Math.max.apply(null, ys), dmin = mn, dmax = mx;
+    if (mx - mn < 1e-9) { mn -= 1; mx += 1; } else { var m = (mx - mn) * 0.15; mn -= m; mx += m; }
+    var t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+    function X(t) { return t1 === t0 ? (gl + W - gr) / 2 : gl + (t - t0) / (t1 - t0) * (W - gl - gr); }
+    function Y(y) { return gh + (mx - y) / (mx - mn) * (H - gh - gb); }
+    function fmt(v) { return (unite.indexOf("rép") === 0 ? Math.round(v) : Math.round(v * 10) / 10).toString().replace(".", ","); }
+    var s = '<svg class="graphe" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Courbe (' + esc(unite) + ')">';
+    uniques([dmin, dmax]).forEach(function (v) {
+      s += '<line class="grille-h" x1="' + gl + '" x2="' + (W - gr) + '" y1="' + Y(v).toFixed(1) + '" y2="' + Y(v).toFixed(1) + '"/><text class="axe" x="' + (gl - 4) + '" y="' + (Y(v) + 4).toFixed(1) + '" text-anchor="end">' + fmt(v) + "</text>";
+    });
+    s += '<text class="axe" x="' + gl + '" y="' + (H - 6) + '">' + esc(dateCourte(pts[0].d)) + '</text><text class="axe" x="' + (W - gr) + '" y="' + (H - 6) + '" text-anchor="end">' + (pts.length > 1 ? esc(dateCourte(pts[pts.length - 1].d)) : "") + "</text>";
+    if (moy && moy.length > 1) s += '<polyline class="moy" points="' + moy.map(function (q) { return X(q.t).toFixed(1) + "," + Y(q.y).toFixed(1); }).join(" ") + '"/>';
+    if (pts.length > 1) s += '<polyline class="ligne" points="' + pts.map(function (q) { return X(q.t).toFixed(1) + "," + Y(q.y).toFixed(1); }).join(" ") + '"/>';
+    pts.forEach(function (q) { s += '<circle class="pt" cx="' + X(q.t).toFixed(1) + '" cy="' + Y(q.y).toFixed(1) + '" r="3.5"/>'; });
+    return s + "</svg>";
+  }
+  function moyenne7(log) {
+    return log.map(function (l) {
+      var f = log.filter(function (m) { return m.t <= l.t && l.t - m.t < 7 * 86400000; });
+      return { t: l.t, d: l.d, y: f.reduce(function (s, m) { return s + m.y; }, 0) / f.length };
+    });
+  }
+  function joursActifs(p) {
+    var set = {};
+    Object.keys(p.valides).forEach(function (d) { if (p.valides[d].length) set[d] = 1; });
+    Object.keys(p.journal).forEach(function (d) { if (Object.keys(p.journal[d]).length) set[d] = 1; });
+    return Object.keys(set).sort();
+  }
+  function vueHistorique() {
+    var p = profil(), h = alerteHtml() + "<h2>Historique</h2>";
+    var jours = joursActifs(p), now = new Date(aujourdhui() + "T12:00:00").getTime();
+    var n7 = jours.filter(function (d) { return now - new Date(d + "T12:00:00").getTime() < 7 * 86400000; }).length;
+    var n30 = jours.filter(function (d) { return now - new Date(d + "T12:00:00").getTime() < 30 * 86400000; }).length;
+    h += '<div class="carte verre"><h3>Régularité</h3><p><span class="kcal">' + n7 + "</span> jour" + (n7 > 1 ? "s" : "") + " d'entraînement sur les 7 derniers jours<br>" + n30 + " sur les 30 derniers jours</p></div>";
+    // poids
+    var log = p.poidsLog.slice().sort(function (x, y) { return x.date < y.date ? -1 : 1; }).map(function (l) { return { t: new Date(l.date + "T12:00:00").getTime(), d: l.date, y: nombre(l.kg) }; }).filter(function (l) { return l.y > 0; });
+    h += '<div class="carte verre"><h3>Poids</h3>';
+    if (log.length < 2) {
+      h += '<p class="doux">Ajoute au moins 2 pesées (onglet Profil, "Poids du jour") pour voir la courbe.' + (log.length ? " Dernière : " + esc(log[0].y) + " kg." : "") + "</p>";
+    } else {
+      var mo = moyenne7(log), der = log[log.length - 1], dm = mo[mo.length - 1];
+      h += chartLigne(log, mo, "kg");
+      h += '<p class="legende"><span class="l1"></span> pesées <span class="l2"></span> moyenne sur 7 jours</p>';
+      var ecart = Math.round((der.y - log[0].y) * 10) / 10;
+      h += "<p>Dernier : <strong>" + esc(der.y) + " kg</strong> (" + esc(dateCourte(der.d)) + "). Moyenne 7 jours : " + (Math.round(dm.y * 10) / 10) + " kg.<br>Depuis le " + esc(dateCourte(log[0].d)) + " : " + (ecart > 0 ? "+" : "") + ecart + " kg.</p>";
+      h += '<p class="doux">Pour une prise de masse progressive, regarde plutôt la tendance sur plusieurs semaines que la valeur d\'un jour.</p>';
+    }
+    h += "</div>";
+    // progression par exercice
+    var ids = [];
+    Object.keys(p.journal).forEach(function (d) { Object.keys(p.journal[d]).forEach(function (id) { if (ids.indexOf(id) === -1 && exoParId(id)) ids.push(id); }); });
+    h += '<div class="carte verre"><h3>Progression par exercice</h3>';
+    if (!ids.length) {
+      h += '<p class="doux">Pas encore de séries enregistrées. Ouvre un exercice et saisis tes répétitions et ta charge : la courbe apparaît ici.</p>';
+    } else {
+      var cur = vueHistorique.exo && ids.indexOf(vueHistorique.exo) !== -1 ? vueHistorique.exo : ids[0];
+      h += '<label for="sel-exo">Exercice</label><select id="sel-exo">' + ids.map(function (id) { return '<option value="' + id + '"' + (id === cur ? " selected" : "") + ">" + esc(exoParId(id).nom) + "</option>"; }).join("") + "</select>";
+      var ds = Object.keys(p.journal).filter(function (d) { return p.journal[d][cur] && p.journal[d][cur].length; }).sort();
+      var pts = ds.map(function (d) { return { t: new Date(d + "T12:00:00").getTime(), d: d, y: p.journal[d][cur].reduce(function (s, x) { return s + x.r; }, 0) }; });
+      h += chartLigne(pts, null, "répétitions totales");
+      h += '<p class="doux">Courbe : répétitions totales par séance.</p>';
+      var kmax = 0; ds.forEach(function (d) { p.journal[d][cur].forEach(function (x) { if (x.k > kmax) kmax = x.k; }); });
+      if (kmax) h += "<p>Charge maximale : <strong>" + kmax + " kg</strong></p>";
+      h += "<p>" + ds.slice(-5).reverse().map(function (d) { return "<strong>" + esc(dateCourte(d)) + "</strong> : " + esc(resumeSeries(p.journal[d][cur])); }).join("<br>") + "</p>";
+    }
+    h += "</div>";
+    // séances récentes
+    h += '<div class="carte verre"><h3>Séances récentes</h3>';
+    if (!jours.length) h += '<p class="doux">Aucune séance pour l\'instant.</p>';
+    jours.slice(-8).reverse().forEach(function (d) {
+      var noms = uniques((p.valides[d] || []).concat(Object.keys(p.journal[d] || {}))).map(function (id) { var e = exoParId(id); return e ? esc(e.nom) : ""; }).filter(Boolean);
+      h += "<p><strong>" + esc(dateCourte(d)) + "</strong> : " + noms.join(", ") + "</p>";
+    });
+    vue.innerHTML = h + "</div>";
+  }
+
   function alerteHtml() {
     if (!alerteDonnees) return "";
     return '<div class="alerte"><strong>Données illisibles.</strong> Tes données enregistrées dans ce navigateur n\'ont pas pu être lues. Je n\'ai rien effacé : une copie brute est gardée. <button class="second" data-sauvegarde="1">Télécharger la copie</button></div>';
@@ -213,7 +341,7 @@
       h += '<h3 style="margin-top:16px">Exercices (' + faits.filter(function (id) { return a.exos.indexOf(id) !== -1; }).length + "/" + exos.length + " validés)</h3>";
       exos.forEach(function (e) {
         var fait = faits.indexOf(e.id) !== -1;
-        h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + '</strong></a><div class="doux">' + esc(e.series) + '</div></div><button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
+        h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + '</strong></a><div class="doux">' + esc(e.series) + "</div>" + infoSeries(p, e) + '</div><button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
       });
       var kcal = 0, prot = 0;
       h += '<h3 style="margin-top:16px">Repas de la journée</h3>';
@@ -244,7 +372,7 @@
     h += '<h3 style="margin:6px 4px 10px">Séance proposée</h3>';
     s.liste.forEach(function (e) {
       var fait = faits.indexOf(e.id) !== -1;
-      h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div></div>" +
+      h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div>" + infoSeries(p, e) + "</div>" +
         '<button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
     });
     var n = besoins(p);
@@ -282,13 +410,20 @@
     vue.innerHTML = h;
   }
 
-  function vueExercice(id) {
+  function vueExercice(id, seriesOverride, note) {
     var e = exoParId(id);
     if (!e) { location.hash = "#/exercices"; return; }
     var h = '<p><a href="#/exercices">← Exercices</a></p><h2>' + esc(e.nom) + "</h2>";
     var ph = window.PHOTOS && window.PHOTOS[e.id];
     if (ph && window.IMGS && window.IMGS[e.id]) h += '<figure class="photo-exo verre"><img src="' + window.IMGS[e.id] + '" alt="' + esc(e.nom) + '" width="520" height="390"><figcaption>Photo : ' + esc(ph.auteur) + ' / <a href="https://www.pexels.com/photo/' + ph.pexels + '/" target="_blank" rel="noopener">Pexels</a></figcaption></figure>';
     else h += '<div class="image-ph verre" role="img" aria-label="Pas de photo"><div>Photo<small>Pas de photo pour ce mouvement pour l\'instant.</small></div></div>';
+    var pf = profil(), serie = seriesOverride;
+    if (!serie) {
+      var auj = pf.journal[aujourdhui()] && pf.journal[aujourdhui()][e.id], der = derniereSeance(pf, e.id);
+      serie = auj && auj.length ? auj : der ? der.series : [{ r: "", k: "" }, { r: "", k: "" }, { r: "", k: "" }];
+      serie = serie.map(function (x) { return { r: x.r, k: x.k }; });
+    }
+    h += blocSeries(pf, e, serie, note);
     h += '<div class="carte verre"><p><span class="etiquette">' + esc(e.groupe) + "</span>" + etiquettesMat(e) + '</p><p class="doux">Muscles : ' + esc(e.muscles) + "<br>Volume conseillé : " + esc(e.series) + "</p>";
     h += "<h3>Le mouvement pas à pas</h3><ol class=\"etapes\">" + e.etapes.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>";
     h += "<h3>Erreurs fréquentes</h3><p>" + esc(e.erreurs) + "</p><h3>Conseil</h3><p>" + esc(e.conseil) + "</p></div>";
@@ -352,6 +487,24 @@
     }
     var p = profil();
     if (!p) return;
+    if (t.dataset.seriePlus || t.dataset.serieMoins || t.dataset.serieEnreg) {
+      var sid = t.dataset.seriePlus || t.dataset.serieMoins || t.dataset.serieEnreg, brut = lireSeriesDom();
+      if (t.dataset.seriePlus) { brut.push({ r: brut.length ? brut[brut.length - 1].r : "", k: brut.length ? brut[brut.length - 1].k : "" }); vueExercice(sid, brut); }
+      else if (t.dataset.serieMoins) { if (brut.length > 1) brut.pop(); vueExercice(sid, brut); }
+      else {
+        var ok = brut.map(function (x) { return { r: Math.round(nombre(x.r)), k: nombre(x.k) }; }).filter(function (x) { return x.r > 0; });
+        var jr = aujourdhui();
+        p.journal[jr] = p.journal[jr] || {};
+        p.valides[jr] = p.valides[jr] || [];
+        if (ok.length) {
+          p.journal[jr][sid] = ok;
+          if (p.valides[jr].indexOf(sid) === -1) p.valides[jr].push(sid);
+        } else delete p.journal[jr][sid];
+        sauver();
+        vueExercice(sid, null, ok.length ? "Enregistré : " + resumeSeries(ok) + ". Exercice validé pour aujourd'hui." : "Aucune série saisie : rien d'enregistré pour aujourd'hui.");
+      }
+      return;
+    }
     if (t.dataset.alea) {
       p.aleatoire = genererAleatoire(p); sauver(); vueAujourdhui();
       var bloc = document.getElementById("alea"); if (bloc) bloc.scrollIntoView({ block: "start" });
@@ -380,6 +533,7 @@
     }
   });
   vue.addEventListener("change", function (ev) {
+    if (ev.target.id === "sel-exo") { vueHistorique.exo = ev.target.value; vueHistorique(); return; }
     if (ev.target.id === "sel") { etat.actif = ev.target.value; sauver(); route(); }
   });
   function telechargerSauvegarde() {
@@ -422,6 +576,7 @@
     });
     if (nav === "exercices") vueExercices();
     else if (nav === "exercice") vueExercice(parts[1]);
+    else if (nav === "historique") vueHistorique();
     else if (nav === "profil") vueProfil();
     else vueAujourdhui();
     window.scrollTo(0, 0);
