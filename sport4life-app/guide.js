@@ -8,7 +8,8 @@
   var jeton = 0;                  // change à chaque arrêt, coupe la séquence en cours
   var enPause = false, reprise = null, coupe = null;
   var ctx = null, verrou = null, progres = "";
-  var cfg = { voix: true, bip: true, tempo: 3, reps: 0, duree: 0 };
+  var ses = null, sautVal = null, attenteTap = null, ajout = 0;
+  var cfg = { voix: true, bip: true, tempo: 3, p: {}, repos: 0, trans: 30, auto: false };
   try { var s = JSON.parse(localStorage.getItem(CLE) || "{}"); Object.keys(s).forEach(function (k) { if (k in cfg) cfg[k] = s[k]; }); } catch (e) {}
   function sauver() { try { localStorage.setItem(CLE, JSON.stringify(cfg)); } catch (e) {} }
   function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
@@ -23,7 +24,7 @@
     return n;
   }
   function cote(e) { return /par (c[ôo]t[ée]|bras|jambe)/i.test(e.series || "") || /\(\d+ par c/i.test(e.series || ""); }
-  function valeur(e) { return tenu(e) ? (cfg.duree > 0 ? cfg.duree : parDefaut(e)) : (cfg.reps > 0 ? cfg.reps : parDefaut(e)); }
+  function valeur(e) { var q = (cfg.p && cfg.p[e.id]) || {}; var v = tenu(e) ? q.duree : q.reps; return v > 0 ? v : parDefaut(e); }
 
   // ---------- Voix : plugin natif Android, sinon Web Speech ----------
   function plugin() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.TextToSpeech; }
@@ -69,7 +70,7 @@
   }
 
   // ---------- Séquenceur : une seule chose à la fois, avec pause et arrêt ----------
-  function stopTout() { jeton++; enPause = false; if (reprise) { reprise(); reprise = null; } if (coupe) { coupe(); coupe = null; } tais(); liberer(); }
+  function stopTout() { jeton++; enPause = false; sautVal = null; if (attenteTap) { attenteTap(); attenteTap = null; } if (reprise) { reprise(); reprise = null; } if (coupe) { coupe(); coupe = null; } tais(); liberer(); }
   function attendreReprise(j) { return new Promise(function (r) { reprise = r; }).then(function () { return j === jeton; }); }
   // Attente en tranches de 100 ms ; le temps ne compte pas pendant la pause.
   function attendre(ms, j) {
@@ -101,6 +102,7 @@
   function liberer() { try { if (verrou) { verrou.release(); verrou = null; } } catch (e) {} }
 
   function majEcran() {
+    renderSes();
     var m = el("guide-msg"), b = el("guide-btns");
     if (m) m.textContent = progres;
     if (b) b.innerHTML = boutons();
@@ -171,7 +173,7 @@
     if (etat === "marche") { etat = "pause"; enPause = true; tais(); msg("En pause."); majEcran(); }
     else if (etat === "pause") { etat = "marche"; enPause = false; msg("Reprise."); majEcran(); if (reprise) { var r = reprise; reprise = null; r(); } }
   }
-  function arret() { stopTout(); etat = "repos"; msg("Arrêté."); majEcran(); }
+  function arret() { stopTout(); etat = "repos"; msg("Arrêté."); fermerSes(); majEcran(); }
 
   function boutons() {
     if (etat === "repos") return '<button data-guide="start">Démarrer la série</button> <button class="second" data-guide="read">Écouter la consigne</button>';
@@ -199,20 +201,170 @@
     if (!t) return;
     var a = t.getAttribute("data-guide");
     if (a === "start") lancer(); else if (a === "read") ecouter(); else if (a === "pause") pause(); else if (a === "stop") arret();
+    else if (a === "seance-jour" || a === "seance-alea") ouvrirSes(a === "seance-jour" ? "jour" : "alea");
+    else if (a === "sess-begin") commencerSes(); else if (a === "sess-close") { arret(); fermerSes(); }
+    else if (a === "sess-go") { tais(); if (attenteTap) { var r = attenteTap; attenteTap = null; r(); } }
+    else if (a === "sess-plus") { ajout += 15; }
+    else if (a === "sess-skip") { sautVal = "compte"; if (ses && ses.phase === "serie") sautVal = "serie"; tais(); }
+    else if (a === "sess-exo") { sautVal = "exo"; tais(); if (attenteTap) { var r2 = attenteTap; attenteTap = null; r2(); } if (reprise) { var r3 = reprise; reprise = null; enPause = false; etat = "marche"; r3(); } }
   });
   document.addEventListener("change", function (ev) {
     var t = ev.target, k = t.getAttribute && t.getAttribute("data-guide-cfg");
     if (!k) return;
-    if (k === "voix" || k === "bip") cfg[k] = !!t.checked;
-    else { var n = parseInt(t.value, 10); if (n > 0) cfg[k] = n; }
+    if (k === "voix" || k === "bip" || k === "auto") cfg[k] = !!t.checked;
+    else if (k === "reps" || k === "duree") { var m = parseInt(t.value, 10); if (m > 0 && cur) { cfg.p = cfg.p || {}; cfg.p[cur.id] = cfg.p[cur.id] || {}; cfg.p[cur.id][k] = m; } }
+    else { var n = parseInt(t.value, 10); if (n > 0 || (k === "repos" && n === 0)) cfg[k] = n; }
     sauver();
   });
-  window.addEventListener("hashchange", function () { if (etat !== "repos") { stopTout(); etat = "repos"; progres = ""; } });
+  window.addEventListener("hashchange", function () { if (etat !== "repos") { stopTout(); etat = "repos"; progres = ""; } fermerSes(); });
   // Écran éteint ou appli en arrière-plan : les minuteurs du navigateur ralentissent, on met en pause plutôt que de dérégler le rythme.
   document.addEventListener("visibilitychange", function () {
     if (document.hidden && etat === "marche") { etat = "pause"; enPause = true; tais(); progres = "Mis en pause : l'écran s'est éteint ou l'appli est passée en arrière-plan."; }
     else if (!document.hidden) majEcran();
   });
 
-  window.S4Guide = { panel: panel, stop: arret, etat: function () { return etat; }, _cfg: cfg, _tenu: tenu };
+
+  // ---------- Séance guidée : exercices, séries, repos, transitions ----------
+  // Repères sur les repos : ~1 à 2 min pour l'entraînement général (AUSactive), 3 min ou plus pour les charges lourdes
+  // (ACSM 2009, Schoenfeld 2016). Les valeurs de départ ci-dessous sont réglables.
+  function Saut(t) { this.t = t; }
+  function chk(j) { if (j !== jeton) throw new Saut("stop"); if (sautVal === "exo") throw new Saut("exo"); }
+  function nbSeries(e) { var m = (e.series || "").match(/^\s*(\d+)\s*x/i); return m ? parseInt(m[1], 10) : 3; }
+  function reposAuto(e) { return cfg.repos > 0 ? cfg.repos : e.groupe === "Cardio" ? 45 : e.groupe === "Tronc" ? 60 : 90; }
+  var sources = {};
+  function ouvrirSes(qui) {
+    var l = sources[qui] ? sources[qui]() : [];
+    if (!l || !l.length) { alert("Aucun exercice dans cette séance."); return; }
+    stopTout(); etat = "repos";
+    ses = { liste: l, i: 0, phase: "config", label: "", sub: "", big: "", msg: "" };
+    renderSes();
+  }
+  function fermerSes() { ses = null; var o = el("guide-ses"); if (o) o.parentNode.removeChild(o); }
+  function opts(vals, cur, fmt) { return vals.map(function (v) { return '<option value="' + v + '"' + (cur === v ? " selected" : "") + ">" + fmt(v) + "</option>"; }).join(""); }
+  function renderSes() {
+    if (!ses) return;
+    var o = el("guide-ses");
+    if (!o) { o = document.createElement("div"); o.id = "guide-ses"; o.className = "guide-ses"; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Séance guidée"); document.body.appendChild(o); }
+    var h = "<div class=\"guide-ses-in\"><h2>Séance guidée</h2>", ph = ses.phase;
+    if (ph === "config") {
+      h += '<p class="doux">' + ses.liste.length + " exercices : " + ses.liste.map(function (e) { return esc(e.nom); }).join(", ") + ".</p>";
+      h += '<p class="doux">La voix annonce chaque exercice, tu te places, puis tu lances chaque série toi-même. Entre les séries : un repos chronométré. Entre les exercices : une transition avec le nom du prochain mouvement et un temps pour te placer. Tu peux mettre en pause, passer ou arrêter à tout moment.</p>';
+      h += '<div class="puces"><label class="puce"><input type="checkbox" data-guide-cfg="voix"' + (cfg.voix ? " checked" : "") + '>Voix</label><label class="puce"><input type="checkbox" data-guide-cfg="bip"' + (cfg.bip ? " checked" : "") + ">Bips</label></div>";
+      h += '<label for="g-repos">Repos entre les séries</label><select id="g-repos" data-guide-cfg="repos"><option value="0"' + (cfg.repos ? "" : " selected") + ">Automatique (45 à 90 s selon l'exercice)</option>" + opts([30, 45, 60, 90, 120, 150, 180], cfg.repos, function (v) { return v + " secondes"; }) + "</select>";
+      h += '<label for="g-trans">Mise en place entre les exercices</label><select id="g-trans" data-guide-cfg="trans">' + opts([10, 15, 20, 30, 45, 60], cfg.trans, function (v) { return v + " secondes"; }) + "</select>";
+      h += '<label class="puce" style="margin-top:10px"><input type="checkbox" data-guide-cfg="auto"' + (cfg.auto ? " checked" : "") + ">Lancer la série tout seul après le repos (sinon j'appuie sur Démarrer)</label>";
+      h += '<p class="doux petit">Repères : environ 1 à 2 minutes de repos pour l\'entraînement général, 3 minutes ou plus pour les charges lourdes (ACSM 2009 ; Schoenfeld 2016). Pour tes charges légères, 45 à 90 secondes sont une valeur de départ : ajuste selon ta récupération. Cette séance guidée n\'enregistre rien : valide tes exercices comme d\'habitude.</p>';
+      h += '<p><button data-guide="sess-begin">Commencer la séance guidée</button> <button class="second" data-guide="sess-close">Fermer</button></p>';
+    } else {
+      h += '<p class="doux" id="ses-pos">' + (ses.e && ph !== "fin" ? "Exercice " + (ses.i + 1) + " sur " + ses.liste.length : "") + "</p>";
+      h += "<h3>" + esc(ses.label) + "</h3><p class=\"doux\">" + esc(ses.sub) + '</p><p class="guide-big" id="ses-big" aria-hidden="true">' + esc(ses.big) + '</p><p id="ses-msg" role="status" aria-live="polite" class="doux">' + esc(ses.msg) + "</p>";
+      var pz = etat === "pause" ? "Reprendre" : "Pause", b = "";
+      if (ph === "place" || ph === "repos") b = '<button class="second" data-guide="pause">' + pz + '</button> <button class="second" data-guide="sess-plus">+ 15 s</button> <button data-guide="sess-skip">' + (ph === "repos" ? "Passer le repos" : "Je suis prêt") + '</button> <button class="second" data-guide="sess-exo">Exercice suivant</button>';
+      else if (ph === "attente") b = (etat === "pause" ? '<button class="second" data-guide="pause">Reprendre</button> ' : "") + '<button data-guide="sess-go">Démarrer la série</button> <button class="second" data-guide="sess-exo">Exercice suivant</button>';
+      else if (ph === "serie") b = '<button class="second" data-guide="pause">' + pz + '</button> <button data-guide="sess-skip">Terminer la série</button> <button class="second" data-guide="sess-exo">Exercice suivant</button>';
+      if (ph === "fin") h += '<p><button data-guide="sess-close">Fermer</button></p>';
+      else h += "<p>" + b + '</p><p><button class="danger second" data-guide="stop">Arrêter la séance</button></p>';
+    }
+    o.innerHTML = h + "</div>";
+  }
+  function maj(big, msgTxt) {
+    if (!ses) return;
+    if (big !== undefined) { ses.big = big; var b = el("ses-big"); if (b) b.textContent = big; }
+    if (msgTxt !== undefined) { ses.msg = msgTxt; var m = el("ses-msg"); if (m) m.textContent = msgTxt; }
+  }
+  function phase(p, label, sub, big, m) { ses.phase = p; ses.label = label; ses.sub = sub || ""; ses.big = big === undefined ? "" : big; ses.msg = m || ""; renderSes(); }
+  async function compte(sec, j) {
+    var reste = sec * 1000;
+    while (reste > 0) {
+      if (sautVal === "compte") { sautVal = null; break; }
+      chk(j);
+      if (ajout) { reste += ajout * 1000; ajout = 0; }
+      maj(String(Math.ceil(reste / 1000)));
+      if (cfg.bip && reste % 1000 === 0 && reste <= 3000) bip(660, 100);
+      if (!(await attendre(100, j))) throw new Saut("stop");
+      reste -= 100;
+    }
+    chk(j);
+    if (cfg.bip) bip(1320, 250);
+  }
+  async function attendreAppui(j) {
+    if (cfg.auto) return;
+    phase("attente", ses.label, "À toi de lancer", "", "Appuie sur « Démarrer la série » quand tu es prêt.");
+    var p = new Promise(function (r) { attenteTap = r; });
+    await dire("Appuie sur Démarrer quand tu es prêt.", j); chk(j);
+    await p;
+    attenteTap = null; chk(j);
+  }
+  async function serieSes(e, k, n, j) {
+    var nb = valeur(e), t = tenu(e);
+    phase("serie", "Série " + k + " sur " + n + " : " + e.nom, t ? nb + " secondes" : nb + " répétitions", "", "Prêt ?");
+    await dire("Série " + k + " sur " + n + " : " + (t ? nb + " secondes" : nb + " répétitions") + (cote(e) ? ", de chaque côté" : "") + ". Prêt ? 3, 2, 1, c'est parti.", j); chk(j);
+    if (!cfg.voix) { for (var q = 3; q >= 1; q--) { maj(String(q), "Départ dans " + q); bip(660, 120); if (!(await attendre(1000, j))) throw new Saut("stop"); chk(j); } }
+    if (t) {
+      if (cfg.bip) bip(1320, 300);
+      for (var s = nb; s >= 1; s--) {
+        if (sautVal === "serie") { sautVal = null; break; }
+        maj(String(s), "Tenue en cours");
+        if (cfg.bip && s <= 3 && s !== nb) bip(880, 100);
+        if (!(await attendre(1000, j))) throw new Saut("stop"); chk(j);
+      }
+      if (cfg.bip) { bip(1320, 200); await attendre(350, j); bip(1320, 200); await attendre(350, j); }
+    } else if (cfg.bip) {
+      var ms = Math.max(1, cfg.tempo) * 1000;
+      for (var r = 1; r <= nb; r++) {
+        if (sautVal === "serie") { sautVal = null; break; }
+        maj(String(r), "Répétition " + r + " sur " + nb);
+        bip(r === nb ? 1320 : 880, r === nb ? 300 : 120);
+        if (!(await attendre(ms, j))) throw new Saut("stop"); chk(j);
+      }
+    } else {
+      maj("", "À ton rythme : " + nb + " répétitions. Appuie sur « Terminer la série » quand c'est fini.");
+      while (sautVal !== "serie") { if (!(await attendre(200, j))) throw new Saut("stop"); chk(j); }
+      sautVal = null;
+    }
+    chk(j);
+  }
+  async function commencerSes() {
+    if (!ses || ses.phase !== "config") return;
+    var j = ++jeton; audio(); demander(); enPause = false; sautVal = null; etat = "marche";
+    var voixVoulue = cfg.voix;
+    var L = ses.liste;
+    try {
+      if (cfg.voix) { var d = await voixDispo(); if (d !== "ok") { cfg.voix = false; } }
+      for (ses.i = 0; ses.i < L.length; ses.i++) {
+        var e = L[ses.i], n = nbSeries(e);
+        try {
+          ses.e = e;
+          phase("place", (ses.i === 0 ? "Premier exercice : " : "Prochain mouvement : ") + e.nom, "Mise en place, " + n + " séries", String(cfg.trans), e.etapes && e.etapes[0] ? e.etapes[0] : "");
+          await dire((ses.i === 0 ? "C'est parti pour la séance guidée. Premier exercice : " : "Prochain mouvement : ") + e.nom + ". " + (e.etapes && e.etapes[0] ? e.etapes[0] : "") + " " + n + " séries. Place-toi, tu as " + cfg.trans + " secondes.", j); chk(j);
+          await compte(cfg.trans, j);
+          for (var k = 1; k <= n; k++) {
+            if (k > 1) {
+              var rp = reposAuto(e);
+              phase("repos", "Repos avant la série " + k + " sur " + n, e.nom, String(rp));
+              await dire("Série terminée. Repos, " + rp + " secondes.", j); chk(j);
+              await compte(rp, j);
+              await dire("Repos terminé.", j); chk(j);
+            }
+            ses.label = e.nom;
+            await attendreAppui(j);
+            await serieSes(e, k, n, j);
+          }
+          if (ses.i < L.length - 1) await dire("Exercice terminé. Bien joué.", j);
+        } catch (x) {
+          if (x instanceof Saut && x.t === "exo") { sautVal = null; enPause = false; continue; }
+          throw x;
+        }
+      }
+      if (j === jeton) {
+        etat = "repos"; liberer();
+        phase("fin", "Séance terminée", "Bien joué", "", "Pense au retour au calme et aux étirements.");
+        await dire("Séance terminée. Bien joué. Pense au retour au calme et aux étirements.", j);
+      }
+    } catch (x) {
+      if (!(x instanceof Saut)) { if (j === jeton) { etat = "repos"; if (ses) phase("fin", "Séance interrompue", "", "", "Le guidage s'est arrêté."); } }
+    } finally { cfg.voix = voixVoulue; }
+  }
+
+  window.S4Guide = { sources: sources, panel: panel, stop: arret, etat: function () { return etat; }, _cfg: cfg, _tenu: tenu };
 })();
