@@ -30,7 +30,7 @@
       id: uid(), nom: "Exemple : capoeiriste", taille: "", poids: "", age: "", sexe: "", activite: "1.55",
       note: "Capoeira 2 fois par semaine depuis 10 ans, entraînement surtout au poids du corps.",
       materiel: ["corps", "halteres", "disques", "elastique", "abwheel", "corde", "medball", "gilet"], migre3: true,
-      valides: {}, poidsLog: []
+      valides: {}, poidsLog: [], journal: {}
     };
   }
   function normaliser(p) {
@@ -136,7 +136,7 @@
   }
 
 
-  var V = "19";
+  var V = "20";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
