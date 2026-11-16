@@ -1,0 +1,15 @@
+{
+  "name": "sport4life-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Emballage Android (Capacitor) de Sport4Life",
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/local-notifications": "^6.1.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.2.0"
+  }
+}
