@@ -136,7 +136,7 @@
   }
 
 
-  var V = "17";
+  var V = "18";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -577,15 +577,15 @@
     if (!s) return Promise.resolve();
     return Promise.resolve().then(function () { return s.internalRemoveItem({ prefixedKey: CLE_SECURE, sync: false }); });
   }
-  function httpGarmin(methode, chemin, auth) {
+  function httpGarmin(methode, chemin, auth, accept) {
     var h = plug("CapacitorHttp"); if (!h) return Promise.reject(new Error("http"));
-    return h.request({ url: GARMIN + chemin, method: methode, headers: { Authorization: auth, Accept: "application/json" }, responseType: "text" });
+    return h.request({ url: GARMIN + chemin, method: methode, headers: { Authorization: auth, Accept: accept || "application/json" }, responseType: "text" });
   }
   function obtenirJeton() {
     if (montreJeton && montreJeton.exp > Date.now()) return Promise.resolve(montreJeton.v);
     return coffreLire().then(function (cle) {
       if (!cle) throw new Error("pas-de-cle");
-      return httpGarmin("POST", "/personalapitoken-service/personal-api/personal-api-key/token", "ApiKey " + cle);
+      return httpGarmin("POST", "/personalapitoken-service/personal-api/personal-api-key/token", "ApiKey " + cle, "text/plain");
     }).then(function (r) {
       if (r.status !== 200) throw new Error("jeton-" + r.status);
       var t = typeof r.data === "string" ? r.data.trim().replace(/^"|"$/g, "") : (r.data && (r.data.accessToken || r.data.access_token || r.data.token));
