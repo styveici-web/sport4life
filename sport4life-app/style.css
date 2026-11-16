@@ -33,7 +33,7 @@ button,.bouton{font:inherit;font-weight:600;color:#fff;background:var(--bleu);bo
 button.second,.bouton.second{background:rgba(255,255,255,.1);color:var(--ink);border:1px solid var(--bord)}
 button.danger{background:#fecaca;color:#450a0a}
 label{display:block;font-weight:600;margin:10px 0 4px}
-input[type=text],input[type=number],select{width:100%;font:inherit;color:var(--ink);background:rgba(255,255,255,.1);border:1px solid var(--bord);border-radius:12px;padding:10px 12px;min-height:44px}
+input[type=text],input[type=number],input[type=time],textarea,select{width:100%;font:inherit;color:var(--ink);background:rgba(255,255,255,.1);border:1px solid var(--bord);border-radius:12px;padding:10px 12px;min-height:44px}
 select option{color:#111}
 .grille{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 ol.etapes{padding-left:22px;margin:0 0 10px}ol.etapes li{margin-bottom:6px}
