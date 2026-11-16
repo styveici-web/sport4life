@@ -136,7 +136,7 @@
   }
 
 
-  var V = "15";
+  var V = "16";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -671,9 +671,10 @@
       var z = document.getElementById("garmin-cle"), v = z ? z.value.trim() : "";
       if (v.length < 20) { montreEtat.msg = "La clé semble incomplète. Colle la clé entière affichée par Garmin Connect."; vueMontre(); return true; }
       z.value = "";
-      coffreEcrire(v).then(function () { montreJeton = null; cleSession = null; montreEtat.echec = false; chargerMontre().then(function () { if (!montreEtat.msg) montreEtat.msg = "Clé enregistrée dans le Keystore Android."; vueMontre(); }); }).catch(function (e) {
+      montreEtat.cleEnAttente = v;
+      coffreEcrire(v).then(function () { montreJeton = null; cleSession = null; montreEtat.cleEnAttente = null; montreEtat.echec = false; chargerMontre().then(function () { if (!montreEtat.msg) montreEtat.msg = "Clé enregistrée dans le Keystore Android."; vueMontre(); }); }).catch(function (e) {
         var d1 = detailErr(e);
-        sondeCoffre().then(function (d2) { montreEtat.echec = true; montreEtat.cleEnAttente = v; v = ""; montreEtat.msg = "Impossible d'enregistrer la clé dans le Keystore Android. La clé n'a pas été gardée. Détail technique : " + d1 + " | " + d2 + "."; vueMontre(); });
+        sondeCoffre().then(function (d2) { montreEtat.echec = true; montreEtat.msg = "Impossible d'enregistrer la clé dans le Keystore Android. La clé n'a pas été gardée. Détail technique : " + d1 + " | " + d2 + "."; vueMontre(); });
       });
       v = "";
       return true;
