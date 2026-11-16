@@ -92,32 +92,65 @@
     try { localStorage.setItem(CLE, JSON.stringify(etat)); signalerEchec(false); return true; } catch (e) { signalerEchec(true); return false; }
   }
   // Fusion additive d'un profil importé dans un profil existant (même id) : rien n'est écrasé.
+  var RE_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  function aP(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  function objet(o) { return !!o && typeof o === "object" && !Array.isArray(o); }
+  function cleOk(k) { return k !== "__proto__" && k !== "constructor" && k !== "prototype"; }
+  function seriesOk(s) {
+    return Array.isArray(s) && s.length > 0 && s.every(function (x) {
+      return objet(x) && typeof x.r === "number" && isFinite(x.r) && x.r > 0 && typeof x.k === "number" && isFinite(x.k) && x.k >= 0;
+    });
+  }
+  // Fusion additive : n'écrase jamais, ignore tout ce qui est mal formé (compté dans "ignores").
   function fusionnerProfil(loc, imp, appliquer) {
-    var r = { ajouts: 0, conflits: 0 };
-    var j = imp.journal && typeof imp.journal === "object" ? imp.journal : {};
+    var r = { ajouts: 0, conflits: 0, ignores: 0 };
+    var j = objet(imp.journal) ? imp.journal : {};
     Object.keys(j).forEach(function (d) {
-      var jl = loc.journal[d] || (appliquer ? (loc.journal[d] = {}) : {});
-      Object.keys(j[d] || {}).forEach(function (id) {
-        if (!(id in jl)) { r.ajouts++; if (appliquer) jl[id] = j[d][id]; }
+      if (!RE_DATE.test(d) || !objet(j[d])) { r.ignores++; return; }
+      var jl = aP(loc.journal, d) ? loc.journal[d] : null, cree = false;
+      Object.keys(j[d]).forEach(function (id) {
+        if (!cleOk(id) || !seriesOk(j[d][id])) { r.ignores++; return; }
+        if (!jl) { jl = {}; cree = true; }
+        if (!aP(jl, id)) { r.ajouts++; if (appliquer) jl[id] = j[d][id]; }
         else if (JSON.stringify(jl[id]) !== JSON.stringify(j[d][id])) r.conflits++;
       });
+      if (cree && appliquer && jl) loc.journal[d] = jl;
     });
-    var v = imp.valides && typeof imp.valides === "object" ? imp.valides : {};
+    var v = objet(imp.valides) ? imp.valides : {};
     Object.keys(v).forEach(function (d) {
-      var vl = loc.valides[d] || (appliquer ? (loc.valides[d] = []) : []);
-      (Array.isArray(v[d]) ? v[d] : []).forEach(function (id) {
+      if (!RE_DATE.test(d) || !Array.isArray(v[d])) { r.ignores++; return; }
+      var vl = aP(loc.valides, d) && Array.isArray(loc.valides[d]) ? loc.valides[d] : null, cree = false, vus = {};
+      v[d].forEach(function (id) {
+        if (typeof id !== "string" || !id || !cleOk(id) || aP(vus, id)) { if (typeof id !== "string" || !id) r.ignores++; return; }
+        vus[id] = 1;
+        if (!vl) { vl = []; cree = true; }
         if (vl.indexOf(id) === -1) { r.ajouts++; if (appliquer) vl.push(id); }
       });
+      if (cree && appliquer && vl) loc.valides[d] = vl;
     });
+    var dates = {};
     (Array.isArray(imp.poidsLog) ? imp.poidsLog : []).forEach(function (l) {
-      if (!l || !l.date) return;
+      if (!objet(l) || typeof l.date !== "string" || !RE_DATE.test(l.date) || typeof l.kg !== "number" || !(l.kg > 20 && l.kg < 400)) { r.ignores++; return; }
+      if (aP(dates, l.date)) return;
+      dates[l.date] = 1;
       var ex = loc.poidsLog.filter(function (x) { return x.date === l.date; })[0];
       if (!ex) { r.ajouts++; if (appliquer) loc.poidsLog.push({ date: l.date, kg: l.kg }); }
       else if (ex.kg !== l.kg) r.conflits++;
     });
     return r;
   }
-  window.S4Test = { fusionnerProfil: fusionnerProfil };
+  // Profil importé nouveau : copie propre (champs simples + contenu validé par la même fusion).
+  function profilPropre(q) {
+    var n = {};
+    Object.keys(q).forEach(function (k) {
+      if (!cleOk(k) || k === "journal" || k === "valides" || k === "poidsLog") return;
+      n[k] = q[k];
+    });
+    n.journal = {}; n.valides = {}; n.poidsLog = [];
+    var r = fusionnerProfil(n, q, true);
+    return { p: normaliser(n), ajouts: r.ajouts, ignores: r.ignores };
+  }
+  window.S4Test = { fusionnerProfil: fusionnerProfil, profilPropre: profilPropre };
   function profil() {
     if (!etat.profils.length) return null;
     for (var i = 0; i < etat.profils.length; i++) if (etat.profils[i].id === etat.actif) return etat.profils[i];
@@ -907,7 +940,7 @@
     if (t.dataset.rappelPerm) { rappelPerm(); return; }
     if (t.dataset.rappelSave) { rappelSauver(); return; }
     if (t.dataset.export) {
-      var z = document.getElementById("zone-transfert"); try { z.value = localStorage.getItem(CLE) || ""; z.select(); } catch (e) {}
+      var z = document.getElementById("zone-transfert"); try { z.value = etat.profils.length ? JSON.stringify(etat) : ""; z.select(); } catch (e) {}
       transfertMsg(z && z.value ? "Texte prêt à copier." : "Rien à exporter."); return;
     }
     if (t.dataset.import) {
@@ -915,19 +948,20 @@
       try {
         var imp = JSON.parse(document.getElementById("zone-transfert").value);
         if (!imp || !Array.isArray(imp.profils)) throw new Error("format");
-        var etaitVide = !profil(), nouveaux = [], fusions = [], ajouts = 0, conflits = 0;
+        var etaitVide = !profil(), nouveaux = [], fusions = [], ajouts = 0, conflits = 0, ignores = 0, vus = {};
         imp.profils.forEach(function (q) {
-          if (!q || typeof q !== "object") return;
-          q = normaliser(q);
+          if (!objet(q) || typeof q.id !== "string" || !q.id || !cleOk(q.id)) { ignores++; return; }
           var loc = etat.profils.filter(function (x) { return x.id === q.id; })[0];
-          if (!loc) nouveaux.push(q);
-          else { var r = fusionnerProfil(loc, q, false); ajouts += r.ajouts; conflits += r.conflits; if (r.ajouts) fusions.push([loc, q]); }
+          var deja = nouveaux.filter(function (x) { return x.id === q.id; })[0];
+          if (deja) { var rd = fusionnerProfil(deja, q, false); ajouts += rd.ajouts; conflits += rd.conflits; ignores += rd.ignores; if (rd.ajouts) fusions.push([deja, q]); return; }
+          if (!loc) { var pp = profilPropre(q); ignores += pp.ignores; nouveaux.push(pp.p); }
+          else { var r = fusionnerProfil(loc, q, false); ajouts += r.ajouts; conflits += r.conflits; ignores += r.ignores; if (r.ajouts) fusions.push([loc, q]); }
         });
         if (!nouveaux.length && !ajouts) {
-          transfertMsg(conflits ? "Rien à ajouter. " + conflits + " saisie" + (conflits > 1 ? "s" : "") + " différente" + (conflits > 1 ? "s" : "") + " : tes données actuelles sont gardées." : "Rien de nouveau à importer.");
+          transfertMsg(conflits ? "Rien à ajouter. " + conflits + " saisie" + (conflits > 1 ? "s" : "") + " différente" + (conflits > 1 ? "s" : "") + " : tes données actuelles sont gardées." : (ignores ? ignores + " élément(s) mal formé(s) ignoré(s). " : "") + "Rien de nouveau à importer.");
           return;
         }
-        var resume = nouveaux.length + " profil(s) nouveau(x), " + ajouts + " saisie(s) ajoutée(s) à des profils existants" + (conflits ? ", " + conflits + " saisie(s) différente(s) NON écrasée(s) (tes données actuelles sont gardées)" : "") + ". Rien n'est supprimé ni remplacé. Continuer ?";
+        var resume = nouveaux.length + " profil(s) nouveau(x), " + ajouts + " saisie(s) ajoutée(s) à des profils existants" + (conflits ? ", " + conflits + " saisie(s) différente(s) NON écrasée(s) (tes données actuelles sont gardées)" : "") + (ignores ? ", " + ignores + " élément(s) mal formé(s) ignoré(s)" : "") + ". Rien n'est supprimé ni remplacé. Continuer ?";
         if (!confirm(resume)) { transfertMsg("Import annulé. Rien n'a été modifié."); return; }
         nouveaux.forEach(function (q) { etat.profils.push(q); });
         fusions.forEach(function (c) { fusionnerProfil(c[0], c[1], true); });
@@ -939,7 +973,7 @@
         }
         if (etaitVide) { location.hash = "#/profil"; route(); return; }
         route();
-        transfertMsg(nouveaux.length + " profil(s) ajouté(s), " + ajouts + " saisie(s) fusionnée(s)" + (conflits ? ", " + conflits + " conflit(s) ignoré(s) (données actuelles gardées)." : "."));
+        transfertMsg(nouveaux.length + " profil(s) ajouté(s), " + ajouts + " saisie(s) fusionnée(s)" + (conflits ? ", " + conflits + " conflit(s) ignoré(s) (données actuelles gardées)" : "") + (ignores ? ", " + ignores + " élément(s) mal formé(s) ignoré(s)" : "") + ".");
       } catch (e) { etat = JSON.parse(avant); transfertMsg("Texte non reconnu. Rien n'a été modifié."); }
       return;
     }
