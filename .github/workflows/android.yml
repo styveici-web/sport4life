@@ -68,6 +68,14 @@ jobs:
           grep -q POST_NOTIFICATIONS "$M" || sed -i 's#<application#<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application#' "$M"
           cat "$M"
 
+      - name: Clé de signature fixe
+        run: |
+          mkdir -p ~/.android
+          base64 -d android-app/debug.keystore.b64 > ~/.android/debug.keystore
+          F=android-app/android/app/build.gradle
+          sed -i "s/versionCode [0-9]*/versionCode $((100 + GITHUB_RUN_NUMBER))/" "$F"
+          grep -n versionCode "$F"
+
       - name: Construire l'APK debug
         working-directory: android-app/android
         run: |
