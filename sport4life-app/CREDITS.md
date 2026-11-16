@@ -13,7 +13,7 @@ Photos issues de Pexels (https://www.pexels.com/license/ : usage gratuit, commer
 | tractions | Ron Lach | https://www.pexels.com/photo/9644821/ |
 | rowing-halteres | @marcuschanmedia | IG | https://www.pexels.com/photo/29825221/ |
 | curl-halteres | Andrii Chepelovskyi | https://www.pexels.com/photo/10152554/ |
-| squat | MART PRODUCTION | https://www.pexels.com/photo/8032754/ |
+| squat | Yogendra Singh | https://www.pexels.com/photo/4384679/ |
 | squat-lestes | Ivan S | https://www.pexels.com/photo/4164850/ |
 | fentes-bulgares | Ferid Faiqoglu | https://www.pexels.com/photo/27898326/ |
 | pont-fessier | Vlada Karpovich | https://www.pexels.com/photo/4534632/ |
