@@ -38,7 +38,7 @@
   }
   function parle(texte) {
     texte = propre(texte);
-    var p = plugin(), dur = 6000 + texte.length * 110;
+    var p = plugin(), dur = 3000 + texte.length * 90;
     if (p) return course(p.speak({ text: texte, lang: "fr-FR", rate: 1.0, pitch: 1.0, volume: 1.0, category: "ambient", queueStrategy: 0 }), dur).catch(function () { return "erreur"; });
     if (window.speechSynthesis && window.SpeechSynthesisUtterance) {
       return course(new Promise(function (res) {
@@ -84,14 +84,15 @@
       })();
     });
   }
+  var voixMuette = false;
   function dire(texte, j) {
-    if (!cfg.voix) return Promise.resolve(true);
+    if (!cfg.voix || voixMuette) return Promise.resolve(true);
     return new Promise(function (resolve) {
       (function essai() {
         if (j !== jeton) return resolve(false);
         if (enPause) { attendreReprise(j).then(function (ok) { if (ok) essai(); else resolve(false); }); return; }
         var fini = false;
-        parle(texte).then(function (r) { fini = true; if (j !== jeton) return resolve(false); if (enPause) { essai(); return; } resolve(true); });
+        parle(texte).then(function (r) { fini = true; if (j === jeton && !enPause && (r === "delai" || r === "erreur" || r === "aucune")) { voixMuette = true; tais(); msg("Voix sans réponse : bips seulement pour cette séance."); } if (j !== jeton) return resolve(false); if (enPause) { essai(); return; } resolve(true); });
         coupe = function () { if (!fini) resolve(false); };
       })();
     });
@@ -326,7 +327,7 @@
   }
   async function commencerSes() {
     if (!ses || ses.phase !== "config") return;
-    var j = ++jeton; audio(); demander(); enPause = false; sautVal = null; etat = "marche";
+    var j = ++jeton; audio(); demander(); voixMuette = false; enPause = false; sautVal = null; etat = "marche";
     var voixVoulue = cfg.voix;
     var L = ses.liste;
     try {
