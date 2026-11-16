@@ -36,16 +36,55 @@
     if (window.speechSynthesis && window.SpeechSynthesisUtterance) return Promise.resolve("ok");
     return Promise.resolve("aucune");
   }
+  // Suivi de la lecture : le plugin natif envoie "onRangeStart" à chaque mot lu (Android 8+).
+  // Pas de démarrage = voix absente. Démarrée = on attend tant que la lecture progresse.
+  var suivi = { essaye: false, derniere: 0, vu: false };
+  function ecoute(p) {
+    if (suivi.essaye) return; suivi.essaye = true;
+    try {
+      var h = p.addListener && p.addListener("onRangeStart", function () { suivi.vu = true; suivi.derniere = Date.now(); });
+      if (h && h.catch) h.catch(function () {});
+    } catch (e) {}
+  }
+  function evenementsAttendus() {
+    var m = /Android (\d+)/.exec(navigator.userAgent || "");
+    return suivi.vu || (!!m && parseInt(m[1], 10) >= 8);
+  }
+  var DEMARRAGE_MS = 6000, BLOCAGE_MS = 10000, PLAFOND_MS = 180000;
+  function surveille(texte, lancer, aProgresse) {
+    return new Promise(function (res) {
+      var fini = false, t0 = Date.now(), iv;
+      function fin(r) { if (fini) return; fini = true; clearInterval(iv); res(r); }
+      lancer().then(function () { fin("ok"); }, function () { fin("erreur"); });
+      iv = setInterval(function () {
+        var now = Date.now(), p = aProgresse(t0);
+        if (now - t0 > PLAFOND_MS) return fin("delai");
+        if (p) { if (now - p > BLOCAGE_MS) fin("delai"); return; }
+        var garde = evenementsAttendus() ? DEMARRAGE_MS : 6000 + texte.length * 110;
+        if (now - t0 > garde) fin("delai");
+      }, 200);
+    });
+  }
   function parle(texte) {
     texte = propre(texte);
-    var p = plugin(), dur = 3000 + texte.length * 90;
-    if (p) return course(p.speak({ text: texte, lang: "fr-FR", rate: 1.0, pitch: 1.0, volume: 1.0, category: "ambient", queueStrategy: 0 }), dur).catch(function () { return "erreur"; });
+    var p = plugin();
+    if (p) {
+      ecoute(p);
+      return surveille(texte, function () {
+        return p.speak({ text: texte, lang: "fr-FR", rate: 1.0, pitch: 1.0, volume: 1.0, category: "ambient", queueStrategy: 0 });
+      }, function (t0) { return suivi.derniere >= t0 ? suivi.derniere : 0; });
+    }
     if (window.speechSynthesis && window.SpeechSynthesisUtterance) {
-      return course(new Promise(function (res) {
-        var u = new SpeechSynthesisUtterance(texte); u.lang = "fr-FR"; u.rate = 1;
-        u.onend = function () { res("ok"); }; u.onerror = function () { res("erreur"); };
-        window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
-      }), dur);
+      var dem = 0;
+      return surveille(texte, function () {
+        return new Promise(function (res, rej) {
+          var u = new SpeechSynthesisUtterance(texte); u.lang = "fr-FR"; u.rate = 1;
+          u.onstart = function () { dem = Date.now() + texte.length * 110; };
+          u.onboundary = function () { dem = Date.now(); };
+          u.onend = function () { res("ok"); }; u.onerror = function () { rej(); };
+          window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+        });
+      }, function () { return dem; });
     }
     return Promise.resolve("aucune");
   }
