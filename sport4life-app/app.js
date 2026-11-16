@@ -136,7 +136,7 @@
   }
 
 
-  var V = "11";
+  var V = "12";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -526,11 +526,140 @@
       });
     }).catch(function () { msgRappel("Le rappel n\'a pas pu être programmé."); });
   }
+  // ---------- Ma montre (Garmin, lecture seule, appli Android) ----------
+  // La clé API reste dans le stockage sécurisé Android (Keystore), jamais dans localStorage,
+  // ni dans l'export du profil. Les mesures ne sont pas enregistrées : elles restent en mémoire le temps de l'affichage.
+  var GARMIN = "https://personal.connectapi.garmin.com", CLE_SECURE = "s4_garmin_cle";
+  var montreJeton = null, montreEtat = { msg: "", data: null, charge: false };
+  function plug(nom) { try { return window.Capacitor && window.Capacitor.registerPlugin ? window.Capacitor.registerPlugin(nom) : null; } catch (e) { return null; } }
+  function coffreLire() {
+    var s = plug("SecureStorage"); if (!s) return Promise.reject(new Error("coffre"));
+    return s.internalGetItem({ prefixedKey: CLE_SECURE, sync: false }).then(function (r) { return r && r.data ? String(r.data) : null; });
+  }
+  function coffreEcrire(v) { var s = plug("SecureStorage"); if (!s) return Promise.reject(new Error("coffre")); return s.internalSetItem({ prefixedKey: CLE_SECURE, data: v, sync: false }); }
+  function coffreEffacer() { var s = plug("SecureStorage"); if (!s) return Promise.reject(new Error("coffre")); return s.internalRemoveItem({ prefixedKey: CLE_SECURE, sync: false }); }
+  function httpGarmin(methode, chemin, auth) {
+    var h = plug("CapacitorHttp"); if (!h) return Promise.reject(new Error("http"));
+    return h.request({ url: GARMIN + chemin, method: methode, headers: { Authorization: auth, Accept: "application/json" }, responseType: "text" });
+  }
+  function obtenirJeton() {
+    if (montreJeton && montreJeton.exp > Date.now()) return Promise.resolve(montreJeton.v);
+    return coffreLire().then(function (cle) {
+      if (!cle) throw new Error("pas-de-cle");
+      return httpGarmin("POST", "/personalapitoken-service/personal-api/personal-api-key/token", "ApiKey " + cle);
+    }).then(function (r) {
+      if (r.status !== 200) throw new Error("jeton-" + r.status);
+      var t = typeof r.data === "string" ? r.data.trim().replace(/^"|"$/g, "") : (r.data && (r.data.accessToken || r.data.access_token || r.data.token));
+      if (!t) throw new Error("jeton-vide");
+      montreJeton = { v: t, exp: Date.now() + 23 * 3600 * 1000 };
+      return t;
+    });
+  }
+  function lireGarmin(chemin, jeton) {
+    return httpGarmin("GET", chemin, "Bearer " + jeton).then(function (r) {
+      if (r.status !== 200) return null;
+      try { return typeof r.data === "string" ? (r.data ? JSON.parse(r.data) : null) : r.data; } catch (e) { return null; }
+    }).catch(function () { return null; });
+  }
+  function chargerMontre() {
+    montreEtat.charge = true; montreEtat.msg = "Chargement…"; vueMontre();
+    var j = aujourdhui(), d = new Date(); d.setDate(d.getDate() - 6);
+    var j0 = d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+    return obtenirJeton().then(function (t) {
+      return Promise.all([
+        lireGarmin("/usersummary-service/usersummary/daily?calendarDate=" + j, t),
+        lireGarmin("/sleep-service/sleep/dailySleep?date=" + j, t),
+        lireGarmin("/wellness-service/wellness/dailyHeartRate?date=" + j, t),
+        lireGarmin("/usersummary-service/stats/stress/daily/" + j0 + "/" + j, t),
+        lireGarmin("/wellness-service/wellness/bodyBattery/reports/daily?startDate=" + j0 + "&endDate=" + j, t),
+        lireGarmin("/activitylist-service/activities/search/activities?start=0&limit=5", t)
+      ]);
+    }).then(function (r) {
+      montreEtat.data = { jour: r[0], sommeil: r[1], fc: r[2], stress: r[3], bb: r[4], act: r[5] };
+      montreEtat.msg = r.every(function (x) { return x === null; }) ? "Garmin n'a renvoyé aucune donnée. Réessaie après une synchronisation de la montre." : "";
+    }).catch(function (e) {
+      var m = String(e && e.message || "");
+      montreEtat.data = null;
+      if (m === "pas-de-cle") montreEtat.msg = "Colle d'abord ta clé API Garmin ci-dessous.";
+      else if (m === "coffre") montreEtat.msg = "Le stockage sécurisé Android n'est pas disponible : la clé n'est pas utilisée.";
+      else if (m === "http") montreEtat.msg = "La connexion native n'est pas disponible dans cette version.";
+      else if (/^jeton-(400|401|403)$/.test(m)) montreEtat.msg = "Garmin refuse la clé (invalide, supprimée ou expirée). Crée-en une nouvelle dans Garmin Connect puis remplace-la ici.";
+      else montreEtat.msg = "Connexion à Garmin impossible pour le moment (réseau ou service). Réessaie plus tard.";
+    }).then(function () { montreEtat.charge = false; if (/^#\/montre/.test(location.hash)) vueMontre(); });
+  }
+  function nb(v, suf) { return (typeof v === "number" && isFinite(v)) ? Math.round(v) + (suf || "") : "—"; }
+  function hm(s) { if (typeof s !== "number" || !isFinite(s) || s <= 0) return "—"; var m = Math.round(s / 60); return Math.floor(m / 60) + " h " + ("0" + (m % 60)).slice(-2); }
+  function ligneM(lib, val) { return '<div class="ligne"><span>' + esc(lib) + "</span><strong>" + esc(val) + "</strong></div>"; }
+  function vueMontre() {
+    var h = alerteHtml() + "<h2>Ma montre</h2>";
+    h += '<p><a href="#/profil">← Retour au profil</a></p>';
+    if (!natif()) {
+      h += '<div class="carte verre"><p class="doux">Ma montre est disponible uniquement dans l\'appli Android Sport4Life. Sur le site, elle n\'est pas active.</p></div>';
+      vue.innerHTML = h; return;
+    }
+    h += '<div class="carte verre"><h3>Garmin Connect (lecture seule)</h3>';
+    h += '<p class="doux">Tes mesures viennent de Garmin Connect après la synchronisation de ta montre, pas en direct. Elles ne changent ni tes objectifs de calories ni tes charges, et ne sont pas enregistrées dans l\'appli.</p>';
+    if (montreEtat.msg) h += '<p role="status">' + esc(montreEtat.msg) + "</p>";
+    h += '<label for="garmin-cle">Clé API Garmin (Personal API Key)</label><input type="password" id="garmin-cle" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Colle la clé ici">';
+    h += '<p style="margin-top:10px" class="ligne"><button data-montre-save="1">Enregistrer la clé</button><button class="second" data-montre-refresh="1">Actualiser</button></p>';
+    h += '<p class="doux">La clé est gardée dans le stockage sécurisé du téléphone (Keystore Android). Elle n\'est ni dans l\'export de tes données ni dans le dépôt. <button class="second" data-montre-del="1">Supprimer la clé de l\'appli</button></p></div>';
+    var D = montreEtat.data;
+    if (D) {
+      var js = D.jour || {}, sl = D.sommeil || {}, fc = D.fc || {};
+      h += '<div class="carte verre"><h3>Aujourd\'hui</h3>';
+      h += ligneM("Pas", nb(js.totalSteps) + (js.dailyStepGoal ? " / " + nb(js.dailyStepGoal) : ""));
+      h += ligneM("Calories (total / actives)", nb(js.totalKilocalories) + " / " + nb(js.activeKilocalories) + " kcal");
+      h += ligneM("Minutes d'intensité (modérée / vigoureuse)", nb(js.moderateIntensityMinutes) + " / " + nb(js.vigorousIntensityMinutes) + " min");
+      h += ligneM("FC au repos (min / max du jour)", nb(fc.restingHeartRate, " bpm") + " (" + nb(fc.minHeartRate) + " / " + nb(fc.maxHeartRate) + ")");
+      var st = Array.isArray(D.stress) && D.stress.length ? D.stress[D.stress.length - 1] : null;
+      h += ligneM("Stress moyen", st && st.values ? nb(st.values.overallStressLevel) : "—");
+      var bb = Array.isArray(D.bb) && D.bb.length ? D.bb[D.bb.length - 1] : null;
+      h += ligneM("Body Battery (chargé / dépensé)", bb ? nb(bb.charged) + " / " + nb(bb.drained) : "—");
+      h += "</div>";
+      h += '<div class="carte verre"><h3>Sommeil de la nuit</h3>';
+      h += ligneM("Durée", hm(sl.sleepTimeSeconds)) + ligneM("Profond", hm(sl.deepSleepSeconds)) + ligneM("Léger", hm(sl.lightSleepSeconds)) + ligneM("REM", hm(sl.remSleepSeconds)) + ligneM("Éveillé", hm(sl.awakeSleepSeconds));
+      h += "</div>";
+      h += '<div class="carte verre"><h3>Dernières activités</h3>';
+      var acts = Array.isArray(D.act) ? D.act : [];
+      if (!acts.length) h += '<p class="doux">Aucune activité renvoyée.</p>';
+      acts.forEach(function (a) {
+        h += '<div class="repas"><strong>' + esc(a.activityName || "Activité") + '</strong><div class="doux">' + esc(String(a.startTimeLocal || "").slice(0, 16)) + " · " + esc(a.activityType && a.activityType.typeKey || "") + "</div>";
+        h += '<div class="doux">' + hm(a.duration) + " · " + nb(a.calories, " kcal") + " · FC moy. " + nb(a.averageHR) + " / max " + nb(a.maxHR) + "</div></div>";
+      });
+      h += "</div>";
+    }
+    h += '<div class="alerte">Mesures de la montre données à titre indicatif, pas un avis médical.</div>';
+    vue.innerHTML = h;
+  }
+  function montreAction(t) {
+    if (t.dataset.montreOpen) { location.hash = "#/montre"; if (natif() && !montreEtat.data && !montreEtat.charge) chargerMontre(); return true; }
+    if (t.dataset.montreRefresh) { chargerMontre(); return true; }
+    if (t.dataset.montreSave) {
+      var z = document.getElementById("garmin-cle"), v = z ? z.value.trim() : "";
+      if (v.length < 20) { montreEtat.msg = "La clé semble incomplète. Colle la clé entière affichée par Garmin Connect."; vueMontre(); return true; }
+      z.value = "";
+      coffreEcrire(v).then(function () { montreJeton = null; chargerMontre(); }).catch(function () { montreEtat.msg = "Impossible d'enregistrer la clé dans le stockage sécurisé. La clé n'a pas été gardée."; vueMontre(); });
+      v = "";
+      return true;
+    }
+    if (t.dataset.montreDel) {
+      coffreEffacer().then(function () { montreJeton = null; montreEtat = { msg: "Clé supprimée de l'appli.", data: null, charge: false }; vueMontre(); }).catch(function () { montreEtat.msg = "Suppression impossible pour le moment."; vueMontre(); });
+      return true;
+    }
+    return false;
+  }
+
   // ---------- Export / import ----------
   function blocTransfert() {
     return '<div class="carte verre"><h3>Copier mes données</h3><p class="doux">Pour passer du site à l\'appli Android (ou l\'inverse) : exporte ici, copie le texte, puis colle-le dans l\'autre et importe. L\'import ajoute les profils absents, il ne remplace rien.</p><textarea id="zone-transfert" rows="4" style="width:100%" aria-label="Données exportées ou à importer"></textarea><p style="margin-top:10px"><button class="second" data-export="1">Exporter</button> <button class="second" data-import="1">Importer</button></p><p class="doux" id="transfert-msg" role="status"></p></div>';
   }
   function transfertMsg(t) { var e = document.getElementById("transfert-msg"); if (e) e.textContent = t; }
+
+  function blocMontre() {
+    var h = '<div class="carte verre"><h3>Ma montre Garmin</h3>';
+    if (!natif()) return h + '<p class="doux">Disponible dans l\'appli Android Sport4Life uniquement.</p></div>';
+    return h + '<p class="doux">Affiche en lecture seule tes pas, ton sommeil, ta FC au repos, ta Body Battery et tes dernières activités depuis Garmin Connect.</p><button class="second" data-montre-open="1">Ouvrir Ma montre</button></div>';
+  }
 
   function vueProfil() {
     var p = profil();
@@ -564,6 +693,7 @@
     Object.keys(p.valides).forEach(function (k) { nbEx += p.valides[k].length; });
     h += '<div class="carte verre"><h3>Progression</h3><p>' + nbEx + " exercice" + (nbEx > 1 ? "s" : "") + " validé" + (nbEx > 1 ? "s" : "") + " sur " + nbJours + " jour" + (nbJours > 1 ? "s" : "") + '.</p></div>';
     h += '<div class="carte verre"><h3>Données</h3><p class="doux">Tes données restent dans ce navigateur, sur cet appareil. Elles ne sont envoyées nulle part. Vider le navigateur les efface.</p><button class="danger" data-supprimer="1">Supprimer ce profil</button></div>';
+    h += blocMontre();
     h += blocRappel();
     h += blocTransfert();
     h += '<div class="alerte">Sport4Life donne des conseils généraux, pas un avis médical. Sources prévues : recommandations OMS 2020 sur l\'activité physique, littérature scientifique sur l\'hypertrophie, Open Food Facts et CIQUAL/ANSES.</div>';
@@ -588,6 +718,7 @@
     if (t.dataset.exemple) {
       var ex = exemple(); etat.profils.push(ex); etat.actif = ex.id; sauver(); route(); return;
     }
+    if (montreAction(t)) return;
     if (t.dataset.rappelPerm) { rappelPerm(); return; }
     if (t.dataset.rappelSave) { rappelSauver(); return; }
     if (t.dataset.export) {
@@ -712,6 +843,7 @@
     else if (nav === "exercice") vueExercice(parts[1]);
     else if (nav === "repas") vueRepas();
     else if (nav === "historique") vueHistorique();
+    else if (nav === "montre") vueMontre();
     else if (nav === "profil") vueProfil();
     else vueAujourdhui();
     window.scrollTo(0, 0);
