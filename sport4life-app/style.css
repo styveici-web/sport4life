@@ -49,3 +49,9 @@ a{color:var(--accent)}
 
 .repas{border:1px solid var(--bord);border-radius:16px;padding:10px 12px;margin-bottom:8px;background:rgba(255,255,255,.07)}
 #alea{scroll-margin-top:76px}
+
+.vignette.photo{padding:0;overflow:hidden;background:none}
+.vignette.photo img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-exo{margin:0 0 14px;padding:0;overflow:hidden;border-radius:22px}
+.photo-exo img{width:100%;height:auto;display:block;aspect-ratio:4/3;object-fit:cover}
+.photo-exo figcaption{padding:8px 14px;font-size:.78rem;color:var(--ink2)}
