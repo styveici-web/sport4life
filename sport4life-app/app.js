@@ -136,7 +136,7 @@
   }
 
 
-  var V = "10";
+  var V = "11";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -295,6 +295,7 @@
     h += '<p class="doux" style="margin-top:10px">Taille, poids, âge et sexe servent à estimer tes besoins en calories et protéines. Tu peux les ajouter plus tard.</p>';
     h += '<button type="submit">Créer mon profil</button></form>';
     h += '<div class="carte verre"><p class="doux">Tu veux juste découvrir l\'app ? Essaie le profil exemple (capoeiriste : disques 5 kg, haltères 3 kg, élastique).</p><button class="second" data-exemple="1">Utiliser le profil exemple</button></div>';
+    h += blocTransfert();
     vue.innerHTML = h;
   }
 
@@ -597,13 +598,18 @@
       try {
         var imp = JSON.parse(document.getElementById("zone-transfert").value), ajoutes = 0;
         if (!imp || !Array.isArray(imp.profils)) throw new Error("format");
+        var etaitVide = !profil();
         imp.profils.forEach(function (q) {
           if (!q || typeof q !== "object") return;
           q = normaliser(q);
           var existe = etat.profils.some(function (x) { return x.id === q.id; });
           if (!existe) { etat.profils.push(q); ajoutes++; }
         });
-        if (ajoutes) { sauver(); }
+        if (ajoutes) {
+          if (etaitVide) { etat.actif = (imp.actif && etat.profils.some(function (x) { return x.id === imp.actif; })) ? imp.actif : etat.profils[0].id; }
+          sauver();
+        }
+        if (etaitVide && ajoutes) { location.hash = "#/profil"; route(); return; }
         transfertMsg(ajoutes + " profil" + (ajoutes > 1 ? "s" : "") + " ajouté" + (ajoutes > 1 ? "s" : "") + ".");
       } catch (e) { transfertMsg("Texte non reconnu. Rien n'a été modifié."); }
       return;
