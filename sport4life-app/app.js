@@ -29,7 +29,7 @@
     return {
       id: uid(), nom: "Exemple : capoeiriste", taille: "", poids: "", age: "", sexe: "", activite: "1.55",
       note: "Capoeira 2 fois par semaine depuis 10 ans, entraînement surtout au poids du corps.",
-      materiel: ["corps", "halteres", "abwheel", "corde", "medball", "gilet"],
+      materiel: ["corps", "halteres", "disques", "elastique", "abwheel", "corde", "medball", "gilet"], migre3: true,
       valides: {}, poidsLog: []
     };
   }
@@ -39,6 +39,13 @@
     if (!p.valides || typeof p.valides !== "object") p.valides = {};
     if (!Array.isArray(p.poidsLog)) p.poidsLog = [];
     if (!p.journal || typeof p.journal !== "object") p.journal = {};
+    // v3 : matériel réel du profil exemple (disques 5 kg, haltères 3 kg, élastique). Ajout seulement.
+    if (!p.migre3) {
+      p.migre3 = true;
+      if (p.nom && p.nom.indexOf("Exemple : capoeiriste") === 0) {
+        ["disques", "elastique"].forEach(function (m) { if (p.materiel.indexOf(m) === -1) p.materiel.push(m); });
+      }
+    }
     ["nom", "taille", "poids", "age", "sexe", "note"].forEach(function (k) { if (p[k] == null) p[k] = ""; });
     if (!p.activite) p.activite = "1.55";
     return p;
@@ -72,7 +79,7 @@
   }
   var etat = charger();
   function sauver() {
-    etat.version = 2;
+    etat.version = 3;
     try { localStorage.setItem(CLE, JSON.stringify(etat)); } catch (e) {}
   }
   function profil() {
@@ -129,7 +136,7 @@
   }
 
 
-  var V = "6";
+  var V = "7";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -287,7 +294,7 @@
     h += '<form class="carte verre" id="bienvenue" autocomplete="off"><h3>Ton profil</h3>' + champsProfil(vide);
     h += '<p class="doux" style="margin-top:10px">Taille, poids, âge et sexe servent à estimer tes besoins en calories et protéines. Tu peux les ajouter plus tard.</p>';
     h += '<button type="submit">Créer mon profil</button></form>';
-    h += '<div class="carte verre"><p class="doux">Tu veux juste découvrir l\'app ? Essaie le profil exemple (capoeiriste, petit matériel).</p><button class="second" data-exemple="1">Utiliser le profil exemple</button></div>';
+    h += '<div class="carte verre"><p class="doux">Tu veux juste découvrir l\'app ? Essaie le profil exemple (capoeiriste : disques 5 kg, haltères 3 kg, élastique).</p><button class="second" data-exemple="1">Utiliser le profil exemple</button></div>';
     vue.innerHTML = h;
   }
 
@@ -410,6 +417,15 @@
     vue.innerHTML = h;
   }
 
+  function progression(e) {
+    var t = [];
+    if (e.requis.indexOf("disques") !== -1) t.push("Disques de 5 kg : les paliers sont grands. Avant de changer de charge, monte d'abord les reps (ex. 12 puis 15 puis 20), ralentis la descente (3 s) et raccourcis les pauses (60 s).");
+    if (e.requis.indexOf("halteres") !== -1) t.push("Haltères de 3 kg : charge légère. Progresse par les reps, le tempo lent, les pauses courtes et les séries unilatérales. Les disques de 5 kg peuvent prendre le relais.");
+    if (e.requis.indexOf("elastique") !== -1) t.push("Élastique : surcharge en raccourcissant l'élastique, en ralentissant ou en marquant une pause de 2 s à la contraction. La tension monte avec l'étirement, note-le dans les kg (0 si aucune charge).");
+    if (e.requis.indexOf("gilet") !== -1) t.push("Gilet lesté 20 kg : progresse par les reps avant d'ajouter de la charge.");
+    return t.length ? '<h3>Progression avec ton matériel</h3><p class="doux">' + t.map(esc).join("<br>") + "</p>" : "";
+  }
+
   function vueExercice(id, seriesOverride, note) {
     var e = exoParId(id);
     if (!e) { location.hash = "#/exercices"; return; }
@@ -426,7 +442,7 @@
     h += blocSeries(pf, e, serie, note);
     h += '<div class="carte verre"><p><span class="etiquette">' + esc(e.groupe) + "</span>" + etiquettesMat(e) + '</p><p class="doux">Muscles : ' + esc(e.muscles) + "<br>Volume conseillé : " + esc(e.series) + "</p>";
     h += "<h3>Le mouvement pas à pas</h3><ol class=\"etapes\">" + e.etapes.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>";
-    h += "<h3>Erreurs fréquentes</h3><p>" + esc(e.erreurs) + "</p><h3>Conseil</h3><p>" + esc(e.conseil) + "</p></div>";
+    h += "<h3>Erreurs fréquentes</h3><p>" + esc(e.erreurs) + "</p><h3>Conseil</h3><p>" + esc(e.conseil) + "</p>" + progression(e) + "</div>";
     h += '<div class="alerte">Conseils généraux. Si une douleur apparaît, arrête-toi et demande un avis à un professionnel.</div>';
     vue.innerHTML = h;
   }
