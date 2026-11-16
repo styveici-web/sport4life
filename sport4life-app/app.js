@@ -136,7 +136,7 @@
   }
 
 
-  var V = "23";
+  var V = "24";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -348,6 +348,7 @@
       var repas = a.repas.map(repasParId).filter(Boolean);
       var gA = groupesSeance(exos, exos.length ? exos[0].groupe : "");
       h += blocEchauffement(p, gA);
+      if (window.S4Guide && exos.length) h += '<p style="margin-top:16px"><button data-guide="seance-alea">Séance guidée (voix, repos, transitions)</button></p>';
       h += '<h3 style="margin-top:16px">Exercices (' + faits.filter(function (id) { return a.exos.indexOf(id) !== -1; }).length + "/" + exos.length + " validés)</h3>";
       exos.forEach(function (e) {
         var fait = faits.indexOf(e.id) !== -1;
@@ -474,6 +475,7 @@
     var grp = groupesSeance(s.liste, s.focus);
     h += blocEchauffement(p, grp);
     h += '<h3 style="margin:6px 4px 10px">Séance proposée</h3>';
+    if (window.S4Guide && s.liste.length) h += '<p style="margin:0 4px 12px"><button data-guide="seance-jour">Séance guidée (voix, repos, transitions)</button></p>';
     s.liste.forEach(function (e) {
       var fait = faits.indexOf(e.id) !== -1;
       h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div>" + infoSeries(p, e) + "</div>" +
@@ -974,6 +976,10 @@
     vue.insertBefore(ok, vue.firstChild);
   });
 
+  if (window.S4Guide) {
+    window.S4Guide.sources.jour = function () { return seance(profil()).liste; };
+    window.S4Guide.sources.alea = function () { var p = profil(), x = p.aleatoire && p.aleatoire.date === aujourdhui() ? p.aleatoire : null; return x ? x.exos.map(exoParId).filter(Boolean) : []; };
+  }
   function route() {
     var h = location.hash.replace(/^#\/?/, "") || "aujourdhui";
     var parts = h.split("/"), nav = parts[0];
