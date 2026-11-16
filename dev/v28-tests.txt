@@ -122,7 +122,8 @@ localStorage.setItem("sport4life.guide",JSON.stringify({voix:false,bip:false,tra
 drv='''<script>
 (function(){
 var st0="%s", swap=/^autre_/.test(st0), st=st0.replace(/^autre_/,""), seq=[];
-function clk(a){var b=document.querySelector('button[data-guide="'+a+'"]'); if(!b){document.title+=" MISSING:"+a; return false;} b.click(); return true;}
+function clk0(a){var b=document.querySelector('button[data-guide="'+a+'"]'); if(!b){document.title+=" MISSING:"+a; return false;} b.click(); return true;}
+function clk(a){ if(/^sess-(skip|go)$/.test(a)){ return new Promise(function(r){setTimeout(function(){r(clk0(a))},800)}); } return clk0(a); }
 function txt(){var o=document.getElementById("guide-ses"); return o?o.innerText.replace(/\\s+/g," "):"";}
 function prim(){var b=document.querySelector(".gs-prim"); return b?b.textContent:"";}
 window.addEventListener("load",function(){
