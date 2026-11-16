@@ -136,7 +136,7 @@
   }
 
 
-  var V = "8";
+  var V = "9";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -447,6 +447,55 @@
     vue.innerHTML = h;
   }
 
+  // ---------- Rappel quotidien (appli Android) ----------
+  var CLE_RAPPEL = "sport4life.rappel";
+  function natif() { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
+  function notifs() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications; }
+  function lireRappel() {
+    try { var r = JSON.parse(localStorage.getItem(CLE_RAPPEL)); if (r && /^\d\d:\d\d$/.test(r.heure)) return { actif: !!r.actif, heure: r.heure }; } catch (e) {}
+    return { actif: true, heure: "06:00" };
+  }
+  function blocRappel() {
+    var r = lireRappel();
+    var h = '<div class="carte verre"><h3>Rappel quotidien</h3>';
+    if (!natif()) return h + '<p class="doux">Le rappel de séance est disponible dans l\'appli Android Sport4Life. Sur le site, il n\'est pas actif.</p></div>';
+    h += '<p class="doux">Une notification chaque jour à l\'heure choisie pour te rappeler ta séance. Elle est programmée sur ton téléphone, sans serveur.</p>';
+    h += '<button class="second" data-rappel-perm="1">Autoriser les notifications</button>';
+    h += '<label for="rappel-heure">Heure du rappel</label><input type="time" id="rappel-heure" value="' + esc(r.heure) + '">';
+    h += '<label class="puce" style="margin-top:10px"><input type="checkbox" id="rappel-actif"' + (r.actif ? " checked" : "") + '>Rappel actif</label>';
+    h += '<p style="margin-top:10px"><button data-rappel-save="1">Enregistrer le rappel</button></p><p class="doux" id="rappel-msg" role="status"></p></div>';
+    return h;
+  }
+  function msgRappel(t) { var e = document.getElementById("rappel-msg"); if (e) e.textContent = t; }
+  function rappelPerm() {
+    var n = notifs(); if (!n) { msgRappel("Notifications indisponibles sur cet appareil."); return Promise.resolve(false); }
+    return n.checkPermissions().then(function (c) {
+      if (c.display === "granted") return true;
+      return n.requestPermissions().then(function (r) { return r.display === "granted"; });
+    }).then(function (ok) { msgRappel(ok ? "Notifications autorisées." : "Notifications refusées. Active-les dans les réglages Android de l\'appli."); return ok; })
+      .catch(function () { msgRappel("Impossible de demander l\'autorisation."); return false; });
+  }
+  function rappelSauver() {
+    var n = notifs(), hh = document.getElementById("rappel-heure").value || "06:00", actif = document.getElementById("rappel-actif").checked;
+    var r = { actif: actif, heure: hh };
+    try { localStorage.setItem(CLE_RAPPEL, JSON.stringify(r)); } catch (e) {}
+    if (!n) { msgRappel("Notifications indisponibles sur cet appareil."); return; }
+    var hm = hh.split(":");
+    n.cancel({ notifications: [{ id: 1 }] }).catch(function () {}).then(function () {
+      if (!actif) { msgRappel("Rappel désactivé."); return; }
+      return rappelPerm().then(function (ok) {
+        if (!ok) return;
+        return n.schedule({ notifications: [{ id: 1, title: "Sport4Life", body: "C\'est l\'heure de ta séance. Ouvre l\'appli pour voir ton programme du jour.", schedule: { on: { hour: parseInt(hm[0], 10), minute: parseInt(hm[1], 10) }, allowWhileIdle: true } }] })
+          .then(function () { msgRappel("Rappel programmé chaque jour à " + hh + "."); });
+      });
+    }).catch(function () { msgRappel("Le rappel n\'a pas pu être programmé."); });
+  }
+  // ---------- Export / import ----------
+  function blocTransfert() {
+    return '<div class="carte verre"><h3>Copier mes données</h3><p class="doux">Pour passer du site à l\'appli Android (ou l\'inverse) : exporte ici, copie le texte, puis colle-le dans l\'autre et importe. L\'import ajoute les profils absents, il ne remplace rien.</p><textarea id="zone-transfert" rows="4" style="width:100%" aria-label="Données exportées ou à importer"></textarea><p style="margin-top:10px"><button class="second" data-export="1">Exporter</button> <button class="second" data-import="1">Importer</button></p><p class="doux" id="transfert-msg" role="status"></p></div>';
+  }
+  function transfertMsg(t) { var e = document.getElementById("transfert-msg"); if (e) e.textContent = t; }
+
   function vueProfil() {
     var p = profil();
     var h = alerteHtml() + "<h2>Profil</h2>";
@@ -479,6 +528,8 @@
     Object.keys(p.valides).forEach(function (k) { nbEx += p.valides[k].length; });
     h += '<div class="carte verre"><h3>Progression</h3><p>' + nbEx + " exercice" + (nbEx > 1 ? "s" : "") + " validé" + (nbEx > 1 ? "s" : "") + " sur " + nbJours + " jour" + (nbJours > 1 ? "s" : "") + '.</p></div>';
     h += '<div class="carte verre"><h3>Données</h3><p class="doux">Tes données restent dans ce navigateur, sur cet appareil. Elles ne sont envoyées nulle part. Vider le navigateur les efface.</p><button class="danger" data-supprimer="1">Supprimer ce profil</button></div>';
+    h += blocRappel();
+    h += blocTransfert();
     h += '<div class="alerte">Sport4Life donne des conseils généraux, pas un avis médical. Sources prévues : recommandations OMS 2020 sur l\'activité physique, littérature scientifique sur l\'hypertrophie, Open Food Facts et CIQUAL/ANSES.</div>';
     vue.innerHTML = h;
   }
@@ -500,6 +551,27 @@
     if (t.dataset.sauvegarde) { telechargerSauvegarde(); return; }
     if (t.dataset.exemple) {
       var ex = exemple(); etat.profils.push(ex); etat.actif = ex.id; sauver(); route(); return;
+    }
+    if (t.dataset.rappelPerm) { rappelPerm(); return; }
+    if (t.dataset.rappelSave) { rappelSauver(); return; }
+    if (t.dataset.export) {
+      var z = document.getElementById("zone-transfert"); try { z.value = localStorage.getItem(CLE) || ""; z.select(); } catch (e) {}
+      transfertMsg(z && z.value ? "Texte prêt à copier." : "Rien à exporter."); return;
+    }
+    if (t.dataset.import) {
+      try {
+        var imp = JSON.parse(document.getElementById("zone-transfert").value), ajoutes = 0;
+        if (!imp || !Array.isArray(imp.profils)) throw new Error("format");
+        imp.profils.forEach(function (q) {
+          if (!q || typeof q !== "object") return;
+          q = normaliser(q);
+          var existe = etat.profils.some(function (x) { return x.id === q.id; });
+          if (!existe) { etat.profils.push(q); ajoutes++; }
+        });
+        if (ajoutes) { sauver(); }
+        transfertMsg(ajoutes + " profil" + (ajoutes > 1 ? "s" : "") + " ajouté" + (ajoutes > 1 ? "s" : "") + ".");
+      } catch (e) { transfertMsg("Texte non reconnu. Rien n'a été modifié."); }
+      return;
     }
     var p = profil();
     if (!p) return;
