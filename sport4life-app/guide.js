@@ -282,12 +282,12 @@
     ses = { liste: l, i: 0, phase: "config", label: "", sub: "", big: "", msg: "" };
     renderSes();
   }
-  function fermerSes() { ses = null; var o = el("guide-ses"); if (o) o.parentNode.removeChild(o); }
+  function fermerSes() { ses = null; document.documentElement.style.overflow = ""; document.body.style.overflow = ""; var o = el("guide-ses"); if (o) o.parentNode.removeChild(o); }
   function opts(vals, cur, fmt) { return vals.map(function (v) { return '<option value="' + v + '"' + (cur === v ? " selected" : "") + ">" + fmt(v) + "</option>"; }).join(""); }
   function renderSes() {
     if (!ses) return;
     var o = el("guide-ses");
-    if (!o) { o = document.createElement("div"); o.id = "guide-ses"; o.className = "guide-ses"; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Séance guidée"); document.body.appendChild(o); }
+    if (!o) { o = document.createElement("div"); o.id = "guide-ses"; o.className = "guide-ses"; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Séance guidée"); document.body.appendChild(o); document.documentElement.style.overflow = "hidden"; document.body.style.overflow = "hidden"; }
     var h = "<div class=\"guide-ses-in\"><h2>Séance guidée</h2>", ph = ses.phase;
     if (ph === "config") {
       h += '<p class="doux">' + ses.liste.length + " exercices : " + ses.liste.map(function (e) { return esc(e.nom); }).join(", ") + ".</p>";
@@ -329,14 +329,17 @@
     else if (ph === "repos") { prim = '<button class="gs-prim" data-guide="sess-skip">Passer le repos</button>'; sec = '<button class="second" data-guide="pause">' + pz + '</button><button class="second" data-guide="sess-plus">+ 15 s</button><button class="second" data-guide="sess-exo">Exercice suivant</button>'; }
     else if (ph === "attente") { prim = '<button class="gs-prim" data-guide="sess-go">Démarrer la série</button>'; sec = '<button class="second" data-guide="pause">' + pz + '</button><button class="second" data-guide="sess-exo">Exercice suivant</button><button class="second danger" data-guide="stop">Arrêter</button>'; }
     else if (ph === "serie") { prim = '<button class="gs-prim" data-guide="sess-skip">Série terminée</button>'; sec = '<button class="second" data-guide="pause">' + pz + '</button><button class="second" data-guide="sess-exo">Exercice suivant</button><button class="second danger" data-guide="stop">Arrêter</button>'; }
-    var h = '<div class="guide-ses-in gs">';
+    var h = '<div class="guide-ses-in gs' + (ses.tab ? " open" : "") + '">', nEx = ses.liste.length;
     if (ph === "fin") {
-      h += "<h3>" + esc(ses.label) + '</h3><p class="doux">' + esc(ses.sub) + '</p><p id="ses-msg" role="status" aria-live="polite" class="doux">' + esc(ses.msg) + '</p><p><button class="gs-prim" data-guide="sess-close">Fermer</button></p></div>';
-      o.innerHTML = h; return;
+      h += '<div class="gs-end"><h3>' + esc(ses.label) + '</h3><p class="doux">' + esc(ses.sub) + '</p><p id="ses-msg" role="status" aria-live="polite" class="doux">' + esc(ses.msg) + '</p></div><div class="gs-main"><button class="gs-prim" data-guide="sess-close">Fermer</button></div></div>';
+      o.className = "guide-ses gsx"; o.innerHTML = h; return;
     }
-    h += '<div class="gs-top"><span id="ses-pos" class="doux">Exercice ' + (ses.i + 1) + " sur " + ses.liste.length + '</span>' + ((ph === "place" || ph === "repos") ? '<button class="second danger gs-stop" data-guide="stop">Arrêter</button>' : "") + "</div>";
-    h += '<div class="gs-hero">' + (etiqExo(e) ? '<img class="gs-thumb" src="' + ANAT.pu2 + '" alt="">' : (window.IMGS && window.IMGS[e.id] ? '<img class="gs-thumb photo" src="' + window.IMGS[e.id] + '" alt="">' : "")) + "<div><h3>" + esc(ses.label) + '</h3><p class="doux">' + esc(ses.sub) + "</p></div></div>";
-    h += '<p class="guide-big" id="ses-big" aria-hidden="true">' + esc(ses.big) + '</p><p id="ses-msg" role="status" aria-live="polite" class="doux gs-msg">' + esc(ses.msg) + "</p>";
+    o.className = "guide-ses gsx";
+    var unite = (ph === "place" || ph === "repos") ? "secondes" : "";
+    h += '<div class="gs-prog" role="progressbar" aria-valuemin="0" aria-valuemax="' + nEx + '" aria-valuenow="' + (ses.i + 1) + '"><i style="width:' + Math.round((ses.i + 1) / nEx * 100) + '%"></i></div>';
+    h += '<div class="gs-top"><span id="ses-pos">Exercice ' + (ses.i + 1) + " sur " + nEx + "</span>" + ((ph === "place" || ph === "repos") ? '<button class="gs-link" data-guide="stop">Arrêter la séance</button>' : "") + "</div>";
+    h += '<div class="gs-hero verre">' + (etiqExo(e) ? '<img class="gs-thumb" src="' + ANAT.pu2 + '" alt="">' : (window.IMGS && window.IMGS[e.id] ? '<img class="gs-thumb photo" src="' + window.IMGS[e.id] + '" alt="">' : "")) + "<div><h3>" + esc(ses.label) + '</h3><p class="doux">' + esc(ses.sub) + "</p></div></div>";
+    h += '<div class="gs-mid"><p class="guide-big" id="ses-big" aria-hidden="true">' + esc(ses.big) + '</p><p class="gs-unit">' + unite + '</p><p id="ses-msg" role="status" aria-live="polite" class="gs-msg">' + esc(ses.msg) + "</p></div>";
     h += '<div class="gs-main">' + prim + '</div><div class="gs-sec">' + sec + "</div>";
     if (!ses.tab) h += '<div class="gs-tabs"><button class="gs-tab" data-guide="tab-mouv">Mouvement</button><button class="gs-tab" data-guide="tab-mus">Muscles</button><button class="gs-tab" data-guide="tab-ste">Étapes</button></div>';
     else h += feuille(e, ses.tab);
@@ -393,7 +396,7 @@
         if (!(await attendre(ms, j))) throw new Saut("stop"); chk(j);
       }
     } else {
-      maj("", "À ton rythme : " + nb + " répétitions. Appuie sur « Série terminée » quand c'est fini.");
+      maj(String(nb), "répétitions à faire, à ton rythme");
       while (sautVal !== "serie") { if (!(await attendre(200, j))) throw new Saut("stop"); chk(j); }
       sautVal = null;
     }
