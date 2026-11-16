@@ -152,40 +152,67 @@
   }
   // ---------- Réglages dans l'export (préférences seulement) ----------
   var CLE_GUIDE = "sport4life.guide";
-  function lireJson(cle) { try { var b = localStorage.getItem(cle); return b == null ? null : { brut: b, val: JSON.parse(b) }; } catch (e) { return null; } }
-  function rappelValide(r) {
-    if (!objet(r) || typeof r.actif !== "boolean" || typeof r.heure !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(r.heure)) return null;
-    return { actif: r.actif, heure: r.heure };
+  // état d'un réglage local : absent, lisible (val) ou cassé (illisible ou valeurs fausses)
+  function lireJson(cle) {
+    var b; try { b = localStorage.getItem(cle); } catch (e) { return { etat: "casse" }; }
+    if (b == null) return { etat: "absent" };
+    try { return { etat: "ok", val: JSON.parse(b) }; } catch (e) { return { etat: "casse" }; }
   }
-  function guideValide(g) { return window.S4Guide && window.S4Guide.reglagesValides ? window.S4Guide.reglagesValides(g) : null; }
+  function heureOk(r) { return objet(r) && typeof r.heure === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(r.heure) && typeof r.actif === "boolean"; }
+  function guideForme(g) { return window.S4Guide && window.S4Guide.formeComparable ? window.S4Guide.formeComparable(g) : null; }
   function texteExport() {
     var o = JSON.parse(JSON.stringify(etat)); o.reglages = {};
-    var g = lireJson(CLE_GUIDE); if (g && guideValide(g.val)) o.reglages.guide = guideValide(g.val);
-    var r = lireJson(CLE_RAPPEL); if (r && rappelValide(r.val)) o.reglages.rappel = rappelValide(r.val);
+    var g = lireJson(CLE_GUIDE);
+    if (g.etat === "ok" && window.S4Guide && window.S4Guide.reglagesValides) { var ge = window.S4Guide.reglagesValides(g.val); if (ge) { var copie = {}; Object.keys(ge).forEach(function (k) { copie[k] = ge[k]; }); delete copie.auto; o.reglages.guide = copie; } }
+    var r = lireJson(CLE_RAPPEL); if (r.etat === "ok" && heureOk(r.val)) o.reglages.rappel = { actif: r.val.actif, heure: r.val.heure };
     return JSON.stringify(o);
   }
-  // Décide pour chaque réglage : importer (absent en local), garder le local (différent), rien (identique), ou ignorer (mal formé).
+  // Pour chaque réglage : importer (absent ou cassé en local), garder le local (différent), rien (identique), ou ignorer (mal formé).
+  // Le rappel n'est importé que comme heure, désactivé : jamais de programmation sans choix.
   function planReglages(imp) {
-    var p = { guide: "rien", rappel: "rien", ignores: 0, g: null, r: null };
+    var p = { guide: "rien", rappel: "rien", ignores: 0, g: null, r: null, cassG: false, cassR: false };
     var R = objet(imp.reglages) ? imp.reglages : {};
     if ("guide" in R) {
-      var g = guideValide(R.guide);
+      var g = window.S4Guide && window.S4Guide.reglagesValides ? window.S4Guide.reglagesValides(R.guide) : null;
       if (!g) p.ignores++;
-      else { var lg = lireJson(CLE_GUIDE); if (!lg) { p.guide = "importer"; p.g = g; } else if (JSON.stringify(guideValide(lg.val) || lg.val) !== JSON.stringify(g)) p.guide = "garde"; }
+      else {
+        p.ignores += g._ecartes || 0;
+        var lg = lireJson(CLE_GUIDE), loc = lg.etat === "ok" ? guideForme(lg.val) : null;
+        if (lg.etat === "absent" || (lg.etat !== "absent" && !loc)) { p.guide = "importer"; p.g = g; p.cassG = lg.etat !== "absent"; }
+        else if (loc !== guideForme(R.guide)) p.guide = "garde";
+      }
     }
     if ("rappel" in R) {
-      var r = rappelValide(R.rappel);
-      if (!r) p.ignores++;
-      else { var lr = lireJson(CLE_RAPPEL); if (!lr) { p.rappel = "importer"; p.r = r; } else if (JSON.stringify(rappelValide(lr.val) || lr.val) !== JSON.stringify(r)) p.rappel = "garde"; }
+      if (!heureOk(R.rappel)) p.ignores++;
+      else {
+        var r = { actif: false, heure: R.rappel.heure }, lr = lireJson(CLE_RAPPEL);
+        if (lr.etat === "absent" || !(lr.etat === "ok" && heureOk(lr.val))) { p.rappel = "importer"; p.r = r; p.cassR = lr.etat !== "absent"; }
+        else if (lr.val.heure !== r.heure) p.rappel = "garde";
+      }
     }
     return p;
   }
+  function textesReglages(pr) {
+    var t = [];
+    if (pr.guide === "importer") t.push("réglages du guidage importés" + (pr.cassG ? " (les tiens étaient illisibles)" : "")); else if (pr.guide === "garde") t.push("réglages du guidage différents : tes réglages actuels sont gardés");
+    if (pr.rappel === "importer") t.push("heure du rappel importée, rappel laissé désactivé (aucune notification programmée : choisis-le toi-même avec Enregistrer le rappel)" + (pr.cassR ? " (le tien était illisible)" : "")); else if (pr.rappel === "garde") t.push("heure du rappel différente : ton rappel actuel est gardé");
+    return t;
+  }
+  // Applique les réglages à importer ; renvoie une fonction d'annulation (retire les clés ajoutées, remet la mémoire du guidage).
   function appliquerReglages(p) {
-    var ok = true;
-    if (p.guide === "importer") { ok = (window.S4Guide && window.S4Guide.appliquerReglages ? window.S4Guide.appliquerReglages(p.g) : false) && ok; }
+    var G = window.S4Guide, snap = G && G.instantane ? G.instantane() : null, ancienG = lireJson(CLE_GUIDE), ancienR = lireJson(CLE_RAPPEL), ok = true;
+    var brutG = null, brutR = null; try { brutG = localStorage.getItem(CLE_GUIDE); brutR = localStorage.getItem(CLE_RAPPEL); } catch (e) {}
+    if (p.guide === "importer") ok = !!(G && G.appliquerReglages && G.appliquerReglages(p.g)) && ok;
     // Le rappel est enregistré comme préférence seulement : aucune notification n'est programmée ici.
-    if (p.rappel === "importer") { try { localStorage.setItem(CLE_RAPPEL, JSON.stringify(p.r)); } catch (e) { ok = false; } }
-    return ok;
+    if (ok && p.rappel === "importer") { try { localStorage.setItem(CLE_RAPPEL, JSON.stringify(p.r)); } catch (e) { ok = false; } }
+    function annuler() {
+      try {
+        if (brutG == null) localStorage.removeItem(CLE_GUIDE); else localStorage.setItem(CLE_GUIDE, brutG);
+        if (brutR == null) localStorage.removeItem(CLE_RAPPEL); else localStorage.setItem(CLE_RAPPEL, brutR);
+      } catch (e) {}
+      if (snap && G && G.restaurer) G.restaurer(snap);
+    }
+    return { ok: ok, annuler: annuler };
   }
   window.S4Test = { fusionnerProfil: fusionnerProfil, profilPropre: profilPropre };
   function profil() {
@@ -981,7 +1008,7 @@
       transfertMsg(z && z.value ? "Texte prêt à copier." : "Rien à exporter."); return;
     }
     if (t.dataset.import) {
-      var avant = JSON.stringify(etat);
+      var avant = JSON.stringify(etat), reg = null;
       try {
         var imp = JSON.parse(document.getElementById("zone-transfert").value);
         if (!imp || !Array.isArray(imp.profils)) throw new Error("format");
@@ -995,28 +1022,31 @@
           else { var r = fusionnerProfil(loc, q, false); ajouts += r.ajouts; conflits += r.conflits; ignores += r.ignores; if (r.conflits) concernes.push(loc.nom || loc.id); if (r.ajouts) fusions.push([loc, q]); }
         });
         var pr = planReglages(imp); ignores += pr.ignores;
-        var regTxt = [];
-        if (pr.guide === "importer") regTxt.push("réglages du guidage importés"); else if (pr.guide === "garde") regTxt.push("réglages du guidage différents : tes réglages actuels sont gardés");
-        if (pr.rappel === "importer") regTxt.push("rappel importé comme préférence seulement (aucune notification n'est programmée : appuie sur Enregistrer le rappel pour l'activer)"); else if (pr.rappel === "garde") regTxt.push("rappel différent : ton rappel actuel est gardé");
+        var regTxt = textesReglages(pr);
         if (!nouveaux.length && !ajouts && pr.guide !== "importer" && pr.rappel !== "importer") {
           transfertMsg(conflits ? "Rien à ajouter. " + conflits + " saisie" + (conflits > 1 ? "s" : "") + " différente" + (conflits > 1 ? "s" : "") + " : tes données actuelles sont gardées." : (ignores ? ignores + " élément(s) mal formé(s) ignoré(s). " : "") + "Rien de nouveau à importer.");
           return;
         }
         var resume = nouveaux.length + " profil(s) nouveau(x), " + ajouts + " saisie(s) ajoutée(s) à des profils existants" + (conflits ? ", " + conflits + " saisie(s) différente(s) NON écrasée(s) (profil(s) concerné(s) : " + concernes.join(", ") + " ; tes données actuelles sont gardées)" : "") + (ignores ? ", " + ignores + " élément(s) mal formé(s) ignoré(s)" : "") + (regTxt.length ? ". Réglages : " + regTxt.join(" ; ") : "") + ". Rien n'est supprimé ni remplacé. Continuer ?";
         if (!confirm(resume)) { transfertMsg("Import annulé. Rien n'a été modifié."); return; }
+        reg = appliquerReglages(pr);
+        if (!reg.ok) {
+          reg.annuler(); etat = JSON.parse(avant); signalerEchec(true);
+          transfertMsg("Import impossible : l'enregistrement des réglages a échoué. Tes données et réglages d'avant sont intacts.");
+          return;
+        }
         nouveaux.forEach(function (q) { etat.profils.push(q); });
         fusions.forEach(function (c) { fusionnerProfil(c[0], c[1], true); });
         if (etaitVide) { etat.actif = (imp.actif && etat.profils.some(function (x) { return x.id === imp.actif; })) ? imp.actif : etat.profils[0].id; }
         if (!sauver()) {
-          etat = JSON.parse(avant); signalerEchec(true);
-          transfertMsg("Import impossible : l'enregistrement a échoué. Tes données d'avant sont intactes.");
+          reg.annuler(); etat = JSON.parse(avant); signalerEchec(true);
+          transfertMsg("Import impossible : l'enregistrement a échoué. Tes données et réglages d'avant sont intacts.");
           return;
         }
-        if (etaitVide) { var regOk0 = appliquerReglages(pr); location.hash = "#/profil"; route(); transfertMsg((regOk0 ? "" : "Attention : certains réglages n'ont pas pu être enregistrés. ") + "Import terminé." + (regTxt.length ? " Réglages : " + regTxt.join(" ; ") + "." : "")); return; }
-        var regOk = appliquerReglages(pr);
+        if (etaitVide) { location.hash = "#/profil"; route(); transfertMsg("Import terminé." + (regTxt.length ? " Réglages : " + regTxt.join(" ; ") + "." : "")); return; }
         route();
-        transfertMsg((regOk ? "" : "Attention : certains réglages n'ont pas pu être enregistrés. ") + (regTxt.length ? "Réglages : " + regTxt.join(" ; ") + ". " : "") + nouveaux.length + " profil(s) ajouté(s), " + ajouts + " saisie(s) fusionnée(s)" + (conflits ? ", " + conflits + " conflit(s) ignoré(s) (données actuelles gardées)" : "") + (ignores ? ", " + ignores + " élément(s) mal formé(s) ignoré(s)" : "") + ".");
-      } catch (e) { etat = JSON.parse(avant); transfertMsg("Texte non reconnu. Rien n'a été modifié."); }
+        transfertMsg((regTxt.length ? "Réglages : " + regTxt.join(" ; ") + ". " : "") + nouveaux.length + " profil(s) ajouté(s), " + ajouts + " saisie(s) fusionnée(s)" + (conflits ? ", " + conflits + " conflit(s) ignoré(s) (données actuelles gardées)" : "") + (ignores ? ", " + ignores + " élément(s) mal formé(s) ignoré(s)" : "") + ".");
+      } catch (e) { if (reg) reg.annuler(); etat = JSON.parse(avant); transfertMsg("Texte non reconnu. Rien n'a été modifié."); }
       return;
     }
     var p = profil();
