@@ -1,5 +1,5 @@
 # Sport4Life v28 - scripts de test (aucun secret, aucune donnée perso). Regénérer site/ = copie de sport4life-app + fichiers _t_*.html / _h_*.html
-# ===== mktest.py (tests import/export, Chrome headless: google-chrome --headless=new --virtual-time-budget=8000 --dump-dom file://.../_t_X.html)
+# ===== mktest.py (tests import/export A-I, Chrome headless: google-chrome --headless=new --virtual-time-budget=8000 --dump-dom file://.../_t_X.html)
 import json,sys
 idx=open('/tmp/rec/index.html').read()
 FULL={"id":"pA","nom":"Fixture A","materiel":["corps","elastique"],"journal":{"2026-11-10":{"pompes":[{"r":10,"k":0},{"r":9,"k":0}]},"2026-11-11":{"squat":[{"r":12,"k":5}]}},"valides":{"2026-11-10":["pompes"]},"poidsLog":[{"date":"2026-11-10","kg":70.5}]}
@@ -97,8 +97,21 @@ var m=await importer(%IMP%);L("H msg",m);
 var g=null;try{g=JSON.parse(LS("sport4life.guide"))}catch(e){}
 ok("H reglages locaux casses remplaces",g&&g.repos===45&&/illisibles/.test(window.LASTCONF||""));
 ''')
+T('I','seed([%s],{"sport4life.guide":%s});'%(json.dumps(LOCAL),json.dumps(GUIDE_LOC)),'''
+location.hash="#/profil";await sleep(200);
+var avant=LS("sport4life.v1");
+var orig=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==="sport4life.v1")throw new Error("quota");return orig.call(this,k,v)};
+document.getElementById("pesee").value="73,5";document.querySelector("[data-pesee]").click();await sleep(200);
+Storage.prototype.setItem=orig;
+ok("I ecriture echouee: stockage inchange",LS("sport4life.v1")===avant);
+var bn=document.getElementById("echec-ecriture");ok("I bandeau d'alerte affiche (role alert)",!!bn&&bn.getAttribute("role")==="alert"&&/impossible/.test(bn.textContent));
+document.querySelector("[data-export]").click();await sleep(100);
+var o=JSON.parse(document.getElementById("zone-transfert").value);
+ok("I export contient la pesee non ecrite",o.profils[0].poidsLog.some(function(l){return l.kg===73.5}));
 
-# ===== mkh.py (parcours de la séance guidée réelle, états place/attente/serie/repos/pause/mouv/mus/ste, captures 390x844 @2x)
+''')
+
+# ===== mkh.py (parcours de la séance guidée réelle, états place/attente/serie/repos/pause/mouv/mus/ste/autre_*, captures 390x844 @2x)
 import sys,re
 idx=open('/tmp/rec/index.html').read()
 state=sys.argv[1]
@@ -108,14 +121,14 @@ localStorage.setItem("sport4life.guide",JSON.stringify({voix:false,bip:false,tra
 </script>'''
 drv='''<script>
 (function(){
-var st="%s", seq=[];
+var st0="%s", swap=/^autre_/.test(st0), st=st0.replace(/^autre_/,""), seq=[];
 function clk(a){var b=document.querySelector('button[data-guide="'+a+'"]'); if(!b){document.title+=" MISSING:"+a; return false;} b.click(); return true;}
 function txt(){var o=document.getElementById("guide-ses"); return o?o.innerText.replace(/\\s+/g," "):"";}
 function prim(){var b=document.querySelector(".gs-prim"); return b?b.textContent:"";}
 window.addEventListener("load",function(){
  setTimeout(function(){
   var ex=window.EXERCICES; function g(id){return ex.filter(function(e){return e.id===id})[0]}
-  window.S4Guide.sources.jour=function(){return [g("pompes"),g(ex.filter(function(e){return e.id!=="pompes"&&!e.requis.length})[0].id)]};
+  window.S4Guide.sources.jour=function(){if(swap)return [g(ex.filter(function(e){return e.id!=="pompes"&&!e.requis.length})[0].id),g("pompes")];return [g("pompes"),g(window.AUTRE||ex.filter(function(e){return e.id!=="pompes"&&!e.requis.length})[0].id)]};
   var b=document.createElement("button");b.setAttribute("data-guide","seance-jour");document.body.appendChild(b);b.click();
   setTimeout(function(){
    clk("sess-begin");
