@@ -243,6 +243,7 @@
     if (a === "start") lancer(); else if (a === "read") ecouter(); else if (a === "pause") pause(); else if (a === "stop") arret();
     else if (a === "seance-jour" || a === "seance-alea") ouvrirSes(a === "seance-jour" ? "jour" : "alea");
     else if (a === "sess-begin") commencerSes(); else if (a === "sess-close") { arret(); fermerSes(); }
+    else if ((a === "sess-go" || a === "sess-skip") && ses && ses.t0 && Date.now() - ses.t0 < 700) { /* appui trop proche d'un changement d'écran : ignoré */ }
     else if (a === "sess-go") { tais(); if (attenteTap) { var r = attenteTap; attenteTap = null; r(); } }
     else if (a === "sess-plus") { ajout += 15; }
     else if (a === "sess-skip") { sautVal = "compte"; if (ses && ses.phase === "serie") sautVal = "serie"; tais(); }
@@ -287,7 +288,7 @@
   function renderSes() {
     if (!ses) return;
     var o = el("guide-ses");
-    if (!o) { o = document.createElement("div"); o.id = "guide-ses"; o.className = "guide-ses"; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Séance guidée"); document.body.appendChild(o); document.documentElement.style.overflow = "hidden"; document.body.style.overflow = "hidden"; }
+    if (!o) { o = document.createElement("div"); o.id = "guide-ses"; o.className = "guide-ses"; o.setAttribute("role", "dialog"); o.setAttribute("aria-modal", "true"); o.setAttribute("aria-label", "Séance guidée"); document.body.appendChild(o); document.documentElement.style.overflow = "hidden"; document.body.style.overflow = "hidden"; }
     var h = "<div class=\"guide-ses-in\"><h2>Séance guidée</h2>", ph = ses.phase;
     if (ph === "config") {
       h += '<p class="doux">' + ses.liste.length + " exercices : " + ses.liste.map(function (e) { return esc(e.nom); }).join(", ") + ".</p>";
@@ -307,15 +308,15 @@
   function etiqExo(e) { return (e && e.id === "pompes"); }
   function feuille(e, tab) {
     var t = { mouv: "Mouvement", mus: "Muscles", ste: "Étapes" }, h = '<div class="gs-sheet" role="region" aria-label="' + t[tab] + '"><div class="gs-sheet-h">';
-    ["mouv", "mus", "ste"].forEach(function (k) { h += '<button class="gs-tab' + (k === tab ? " on" : "") + '" data-guide="tab-' + k + '">' + t[k] + "</button>"; });
-    h += '<button class="gs-tab" data-guide="tab-none" aria-label="Fermer le volet">Fermer</button></div><div class="gs-sheet-b">';
+    ["mouv", "mus", "ste"].forEach(function (k) { h += '<button class="gs-tab' + (k === tab ? " on" : "") + '" aria-pressed="' + (k === tab) + '" data-guide="tab-' + k + '">' + t[k] + "</button>"; });
+    h += '<button class="gs-tab" data-guide="tab-none" aria-label="Fermer le volet">✕</button></div><div class="gs-sheet-b">';
     if (tab === "mouv") {
       if (etiqExo(e)) h += '<div class="gs-draw"><img src="' + ANAT.pu1 + '" alt="Pompe, position haute : bras tendus"><img src="' + ANAT.pu2 + '" alt="Pompe, position basse : coudes fléchis"></div><p class="doux petit">Haut : bras tendus, corps aligné. Bas : coudes fléchis, poitrine près du sol.</p>';
       else if (window.IMGS && window.IMGS[e.id]) h += '<img class="gs-photo" src="' + window.IMGS[e.id] + '" alt="' + esc(e.nom) + '">' + (window.PHOTOS && window.PHOTOS[e.id] && window.PHOTOS[e.id].auteur ? '<p class="doux petit">Photo : ' + esc(window.PHOTOS[e.id].auteur) + " / Pexels</p>" : "");
       else h += '<p class="doux">Pas d\'illustration pour ce mouvement pour l\'instant. Les étapes sont dans l\'onglet Étapes.</p>';
     } else if (tab === "mus") {
       h += '<p class="doux">Muscles : ' + esc(e.muscles || "") + "</p>";
-      if (etiqExo(e)) h += '<div class="gs-anat">' + ANAT.svg + '</div><p class="doux petit">Schéma simplifié, en bleu les muscles surtout sollicités : grand pectoral, deltoïde (coloré en entier, sans distinguer ses faisceaux) et triceps (de dos, seules ses parties visibles apparaissent). Choix des muscles d\'après Snarr et Esco 2014 (J Hum Kinet). Aucune mesure ni pourcentage.</p>';
+      if (etiqExo(e)) h += '<div class="gs-anat">' + ANAT.svg + '</div><p class="doux petit">Schéma simplifié. En bleu, les muscles mesurés dans l\'étude de Snarr et Esco (J Hum Kinet, PMC3916913) : grand pectoral, deltoïde (coloré en entier, sans distinguer ses faisceaux) et triceps (de dos, seules ses parties visibles apparaissent). Les autres muscles ne sont pas colorés. Aucun pourcentage d\'activation.</p>';
       else h += '<p class="doux petit">Pas de schéma pour cet exercice pour l\'instant.</p>';
     } else {
       h += '<ol class="etapes">' + (e.etapes || []).map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>";
@@ -325,21 +326,23 @@
   }
   function renderCompact(o, ph) {
     var e = ses.e, pz = etat === "pause" ? "Reprendre" : "Pause", prim = "", sec = "";
-    if (ph === "place") { prim = '<button class="gs-prim" data-guide="sess-skip">Je suis prêt</button>'; sec = '<button class="second" data-guide="pause">' + pz + '</button><button class="second" data-guide="sess-plus">+ 15 s</button><button class="second" data-guide="sess-exo">Exercice suivant</button>'; }
-    else if (ph === "repos") { prim = '<button class="gs-prim" data-guide="sess-skip">Passer le repos</button>'; sec = '<button class="second" data-guide="pause">' + pz + '</button><button class="second" data-guide="sess-plus">+ 15 s</button><button class="second" data-guide="sess-exo">Exercice suivant</button>'; }
-    else if (ph === "attente") { prim = '<button class="gs-prim" data-guide="sess-go">Démarrer la série</button>'; sec = '<button class="second" data-guide="pause">' + pz + '</button><button class="second" data-guide="sess-exo">Exercice suivant</button><button class="second danger" data-guide="stop">Arrêter</button>'; }
-    else if (ph === "serie") { prim = '<button class="gs-prim" data-guide="sess-skip">Série terminée</button>'; sec = '<button class="second" data-guide="pause">' + pz + '</button><button class="second" data-guide="sess-exo">Exercice suivant</button><button class="second danger" data-guide="stop">Arrêter</button>'; }
-    var h = '<div class="guide-ses-in gs' + (ses.tab ? " open" : "") + '">', nEx = ses.liste.length;
+    var vide = '<span class="gs-vide" aria-hidden="true"></span>', suiv = '<button class="second gs-faible" data-guide="sess-exo">Exercice suivant</button>', pb = '<button class="second" data-guide="pause">' + pz + "</button>", plus = '<button class="second" data-guide="sess-plus">+ 15 s</button>';
+    if (ph === "place") { prim = '<button class="gs-prim" data-guide="sess-skip">Je suis prêt</button>'; sec = pb + suiv + plus; }
+    else if (ph === "repos") { prim = '<button class="gs-prim" data-guide="sess-skip">Passer le repos</button>'; sec = pb + suiv + plus; }
+    else if (ph === "attente") { prim = '<button class="gs-prim" data-guide="sess-go">Démarrer la série</button>'; sec = pb + suiv + vide; }
+    else if (ph === "serie") { prim = '<button class="gs-prim" data-guide="sess-skip">Série terminée</button>'; sec = pb + suiv + vide; }
+    if (ses.rph !== ph) { ses.rph = ph; ses.t0 = Date.now(); }
+    var h = '<div class="guide-ses-in gs ph-' + ph + (ses.tab ? " open" : "") + '">', nEx = ses.liste.length;
     if (ph === "fin") {
       h += '<div class="gs-end"><h3>' + esc(ses.label) + '</h3><p class="doux">' + esc(ses.sub) + '</p><p id="ses-msg" role="status" aria-live="polite" class="doux">' + esc(ses.msg) + '</p></div><div class="gs-main"><button class="gs-prim" data-guide="sess-close">Fermer</button></div></div>';
       o.className = "guide-ses gsx"; o.innerHTML = h; return;
     }
     o.className = "guide-ses gsx";
-    var unite = (ph === "place" || ph === "repos") ? "secondes" : "";
-    h += '<div class="gs-prog" role="progressbar" aria-valuemin="0" aria-valuemax="' + nEx + '" aria-valuenow="' + (ses.i + 1) + '"><i style="width:' + Math.round((ses.i + 1) / nEx * 100) + '%"></i></div>';
-    h += '<div class="gs-top"><span id="ses-pos">Exercice ' + (ses.i + 1) + " sur " + nEx + "</span>" + ((ph === "place" || ph === "repos") ? '<button class="gs-link" data-guide="stop">Arrêter la séance</button>' : "") + "</div>";
+    var unite = (ph === "place" || ph === "repos") ? "secondes" : (ses.u || "");
+    h += '<div class="gs-prog" role="progressbar" aria-label="Avancement de la séance" aria-valuemin="0" aria-valuemax="' + nEx + '" aria-valuenow="' + (ses.i + 1) + '"><i style="width:' + Math.max(4, Math.round(ses.i / nEx * 100)) + '%"></i></div>';
+    h += '<div class="gs-top"><span id="ses-pos">Exercice ' + (ses.i + 1) + " sur " + nEx + "</span>" + '<button class="gs-link" data-guide="stop">Arrêter la séance</button>' + "</div>";
     h += '<div class="gs-hero verre">' + (etiqExo(e) ? '<img class="gs-thumb" src="' + ANAT.pu2 + '" alt="">' : (window.IMGS && window.IMGS[e.id] ? '<img class="gs-thumb photo" src="' + window.IMGS[e.id] + '" alt="">' : "")) + "<div><h3>" + esc(ses.label) + '</h3><p class="doux">' + esc(ses.sub) + "</p></div></div>";
-    h += '<div class="gs-mid"><p class="guide-big" id="ses-big" aria-hidden="true">' + esc(ses.big) + '</p><p class="gs-unit">' + unite + '</p><p id="ses-msg" role="status" aria-live="polite" class="gs-msg">' + esc(ses.msg) + "</p></div>";
+    h += '<div class="gs-mid"><p class="guide-big" id="ses-big" aria-hidden="true">' + esc(ses.big) + '</p><p class="gs-unit" id="ses-unit">' + unite + '</p><p id="ses-msg" role="status" aria-live="polite" class="gs-msg">' + esc(ses.msg) + "</p></div>";
     h += '<div class="gs-main">' + prim + '</div><div class="gs-sec">' + sec + "</div>";
     if (!ses.tab) h += '<div class="gs-tabs"><button class="gs-tab" data-guide="tab-mouv">Mouvement</button><button class="gs-tab" data-guide="tab-mus">Muscles</button><button class="gs-tab" data-guide="tab-ste">Étapes</button></div>';
     else h += feuille(e, ses.tab);
@@ -350,7 +353,7 @@
     if (big !== undefined) { ses.big = big; var b = el("ses-big"); if (b) b.textContent = big; }
     if (msgTxt !== undefined) { ses.msg = msgTxt; var m = el("ses-msg"); if (m) m.textContent = msgTxt; }
   }
-  function phase(p, label, sub, big, m) { ses.phase = p; ses.label = label; ses.sub = sub || ""; ses.big = big === undefined ? "" : big; ses.msg = m || ""; renderSes(); }
+  function phase(p, label, sub, big, m) { ses.u = ""; ses.phase = p; ses.label = label; ses.sub = sub || ""; ses.big = big === undefined ? "" : big; ses.msg = m || ""; renderSes(); }
   async function compte(sec, j) {
     var reste = sec * 1000;
     while (reste > 0) {
@@ -379,6 +382,7 @@
     await dire("Série " + k + " sur " + n + " : " + (t ? nb + " secondes" : nb + " répétitions") + (cote(e) ? ", de chaque côté" : "") + ". Prêt ? 3, 2, 1, c'est parti.", j); chk(j);
     if (!cfg.voix) { for (var q = 3; q >= 1; q--) { maj(String(q), "Départ dans " + q); bip(660, 120); if (!(await attendre(1000, j))) throw new Saut("stop"); chk(j); } }
     if (t) {
+      ses.u = "secondes"; var uu2 = el("ses-unit"); if (uu2) uu2.textContent = ses.u;
       if (cfg.bip) bip(1320, 300);
       for (var s = nb; s >= 1; s--) {
         if (sautVal === "serie") { sautVal = null; break; }
@@ -396,7 +400,7 @@
         if (!(await attendre(ms, j))) throw new Saut("stop"); chk(j);
       }
     } else {
-      maj(String(nb), "répétitions à faire, à ton rythme");
+      ses.u = "répétitions à faire"; var uu = el("ses-unit"); if (uu) uu.textContent = ses.u; maj(String(nb), "À ton rythme");
       while (sautVal !== "serie") { if (!(await attendre(200, j))) throw new Saut("stop"); chk(j); }
       sautVal = null;
     }
