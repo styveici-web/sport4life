@@ -1,0 +1,12 @@
+{
+  "appId": "com.styveici.sport4life",
+  "appName": "Sport4Life",
+  "webDir": "www",
+  "backgroundColor": "#0a0b0d",
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_s4",
+      "iconColor": "#2563EB"
+    }
+  }
+}
