@@ -150,6 +150,43 @@
     var r = fusionnerProfil(n, q, true);
     return { p: normaliser(n), ajouts: r.ajouts, ignores: r.ignores };
   }
+  // ---------- Réglages dans l'export (préférences seulement) ----------
+  var CLE_GUIDE = "sport4life.guide";
+  function lireJson(cle) { try { var b = localStorage.getItem(cle); return b == null ? null : { brut: b, val: JSON.parse(b) }; } catch (e) { return null; } }
+  function rappelValide(r) {
+    if (!objet(r) || typeof r.actif !== "boolean" || typeof r.heure !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(r.heure)) return null;
+    return { actif: r.actif, heure: r.heure };
+  }
+  function guideValide(g) { return window.S4Guide && window.S4Guide.reglagesValides ? window.S4Guide.reglagesValides(g) : null; }
+  function texteExport() {
+    var o = JSON.parse(JSON.stringify(etat)); o.reglages = {};
+    var g = lireJson(CLE_GUIDE); if (g && guideValide(g.val)) o.reglages.guide = guideValide(g.val);
+    var r = lireJson(CLE_RAPPEL); if (r && rappelValide(r.val)) o.reglages.rappel = rappelValide(r.val);
+    return JSON.stringify(o);
+  }
+  // Décide pour chaque réglage : importer (absent en local), garder le local (différent), rien (identique), ou ignorer (mal formé).
+  function planReglages(imp) {
+    var p = { guide: "rien", rappel: "rien", ignores: 0, g: null, r: null };
+    var R = objet(imp.reglages) ? imp.reglages : {};
+    if ("guide" in R) {
+      var g = guideValide(R.guide);
+      if (!g) p.ignores++;
+      else { var lg = lireJson(CLE_GUIDE); if (!lg) { p.guide = "importer"; p.g = g; } else if (JSON.stringify(guideValide(lg.val) || lg.val) !== JSON.stringify(g)) p.guide = "garde"; }
+    }
+    if ("rappel" in R) {
+      var r = rappelValide(R.rappel);
+      if (!r) p.ignores++;
+      else { var lr = lireJson(CLE_RAPPEL); if (!lr) { p.rappel = "importer"; p.r = r; } else if (JSON.stringify(rappelValide(lr.val) || lr.val) !== JSON.stringify(r)) p.rappel = "garde"; }
+    }
+    return p;
+  }
+  function appliquerReglages(p) {
+    var ok = true;
+    if (p.guide === "importer") { ok = (window.S4Guide && window.S4Guide.appliquerReglages ? window.S4Guide.appliquerReglages(p.g) : false) && ok; }
+    // Le rappel est enregistré comme préférence seulement : aucune notification n'est programmée ici.
+    if (p.rappel === "importer") { try { localStorage.setItem(CLE_RAPPEL, JSON.stringify(p.r)); } catch (e) { ok = false; } }
+    return ok;
+  }
   window.S4Test = { fusionnerProfil: fusionnerProfil, profilPropre: profilPropre };
   function profil() {
     if (!etat.profils.length) return null;
@@ -869,7 +906,7 @@
 
   // ---------- Export / import ----------
   function blocTransfert() {
-    return '<div class="carte verre"><h3>Copier mes données</h3><p class="doux">Pour passer du site à l\'appli Android (ou l\'inverse) : exporte ici, copie le texte, puis colle-le dans l\'autre et importe. L\'import ajoute les profils absents et fusionne les séances manquantes des profils déjà présents, sans rien remplacer.</p><textarea id="zone-transfert" rows="4" style="width:100%" aria-label="Données exportées ou à importer"></textarea><p style="margin-top:10px"><button class="second" data-export="1">Exporter</button> <button class="second" data-import="1">Importer</button></p><p class="doux" id="transfert-msg" role="status"></p><p class="doux">Version de l\'appli : ' + V + '</p></div>';
+    return '<div class="carte verre"><h3>Copier mes données</h3><p class="doux">Pour passer du site à l\'appli Android (ou l\'inverse) : exporte ici, copie le texte, puis colle-le dans l\'autre et importe. L\'import ajoute les profils absents et fusionne les séances manquantes des profils déjà présents, sans rien remplacer. Les réglages du guidage et du rappel sont inclus : ils ne sont importés que s\'ils n\'existent pas déjà ici, et le rappel n\'est jamais programmé automatiquement.</p><textarea id="zone-transfert" rows="4" style="width:100%" aria-label="Données exportées ou à importer"></textarea><p style="margin-top:10px"><button class="second" data-export="1">Exporter</button> <button class="second" data-import="1">Importer</button></p><p class="doux" id="transfert-msg" role="status"></p><p class="doux">Version de l\'appli : ' + V + '</p></div>';
   }
   function transfertMsg(t) { var e = document.getElementById("transfert-msg"); if (e) e.textContent = t; }
 
@@ -940,7 +977,7 @@
     if (t.dataset.rappelPerm) { rappelPerm(); return; }
     if (t.dataset.rappelSave) { rappelSauver(); return; }
     if (t.dataset.export) {
-      var z = document.getElementById("zone-transfert"); try { z.value = etat.profils.length ? JSON.stringify(etat) : ""; z.select(); } catch (e) {}
+      var z = document.getElementById("zone-transfert"); try { z.value = etat.profils.length ? texteExport() : ""; z.select(); } catch (e) {}
       transfertMsg(z && z.value ? "Texte prêt à copier." : "Rien à exporter."); return;
     }
     if (t.dataset.import) {
@@ -948,20 +985,24 @@
       try {
         var imp = JSON.parse(document.getElementById("zone-transfert").value);
         if (!imp || !Array.isArray(imp.profils)) throw new Error("format");
-        var etaitVide = !profil(), nouveaux = [], fusions = [], ajouts = 0, conflits = 0, ignores = 0, vus = {};
+        var etaitVide = !profil(), nouveaux = [], fusions = [], ajouts = 0, conflits = 0, ignores = 0, concernes = [];
         imp.profils.forEach(function (q) {
           if (!objet(q) || typeof q.id !== "string" || !q.id || !cleOk(q.id)) { ignores++; return; }
           var loc = etat.profils.filter(function (x) { return x.id === q.id; })[0];
           var deja = nouveaux.filter(function (x) { return x.id === q.id; })[0];
-          if (deja) { var rd = fusionnerProfil(deja, q, false); ajouts += rd.ajouts; conflits += rd.conflits; ignores += rd.ignores; if (rd.ajouts) fusions.push([deja, q]); return; }
+          if (deja) { var rd = fusionnerProfil(deja, q, false); ajouts += rd.ajouts; conflits += rd.conflits; ignores += rd.ignores; if (rd.conflits) concernes.push(deja.nom || deja.id); if (rd.ajouts) fusions.push([deja, q]); return; }
           if (!loc) { var pp = profilPropre(q); ignores += pp.ignores; nouveaux.push(pp.p); }
-          else { var r = fusionnerProfil(loc, q, false); ajouts += r.ajouts; conflits += r.conflits; ignores += r.ignores; if (r.ajouts) fusions.push([loc, q]); }
+          else { var r = fusionnerProfil(loc, q, false); ajouts += r.ajouts; conflits += r.conflits; ignores += r.ignores; if (r.conflits) concernes.push(loc.nom || loc.id); if (r.ajouts) fusions.push([loc, q]); }
         });
-        if (!nouveaux.length && !ajouts) {
+        var pr = planReglages(imp); ignores += pr.ignores;
+        var regTxt = [];
+        if (pr.guide === "importer") regTxt.push("réglages du guidage importés"); else if (pr.guide === "garde") regTxt.push("réglages du guidage différents : tes réglages actuels sont gardés");
+        if (pr.rappel === "importer") regTxt.push("rappel importé comme préférence seulement (aucune notification n'est programmée : appuie sur Enregistrer le rappel pour l'activer)"); else if (pr.rappel === "garde") regTxt.push("rappel différent : ton rappel actuel est gardé");
+        if (!nouveaux.length && !ajouts && pr.guide !== "importer" && pr.rappel !== "importer") {
           transfertMsg(conflits ? "Rien à ajouter. " + conflits + " saisie" + (conflits > 1 ? "s" : "") + " différente" + (conflits > 1 ? "s" : "") + " : tes données actuelles sont gardées." : (ignores ? ignores + " élément(s) mal formé(s) ignoré(s). " : "") + "Rien de nouveau à importer.");
           return;
         }
-        var resume = nouveaux.length + " profil(s) nouveau(x), " + ajouts + " saisie(s) ajoutée(s) à des profils existants" + (conflits ? ", " + conflits + " saisie(s) différente(s) NON écrasée(s) (tes données actuelles sont gardées)" : "") + (ignores ? ", " + ignores + " élément(s) mal formé(s) ignoré(s)" : "") + ". Rien n'est supprimé ni remplacé. Continuer ?";
+        var resume = nouveaux.length + " profil(s) nouveau(x), " + ajouts + " saisie(s) ajoutée(s) à des profils existants" + (conflits ? ", " + conflits + " saisie(s) différente(s) NON écrasée(s) (profil(s) concerné(s) : " + concernes.join(", ") + " ; tes données actuelles sont gardées)" : "") + (ignores ? ", " + ignores + " élément(s) mal formé(s) ignoré(s)" : "") + (regTxt.length ? ". Réglages : " + regTxt.join(" ; ") : "") + ". Rien n'est supprimé ni remplacé. Continuer ?";
         if (!confirm(resume)) { transfertMsg("Import annulé. Rien n'a été modifié."); return; }
         nouveaux.forEach(function (q) { etat.profils.push(q); });
         fusions.forEach(function (c) { fusionnerProfil(c[0], c[1], true); });
@@ -971,9 +1012,10 @@
           transfertMsg("Import impossible : l'enregistrement a échoué. Tes données d'avant sont intactes.");
           return;
         }
-        if (etaitVide) { location.hash = "#/profil"; route(); return; }
+        if (etaitVide) { var regOk0 = appliquerReglages(pr); location.hash = "#/profil"; route(); transfertMsg((regOk0 ? "" : "Attention : certains réglages n'ont pas pu être enregistrés. ") + "Import terminé." + (regTxt.length ? " Réglages : " + regTxt.join(" ; ") + "." : "")); return; }
+        var regOk = appliquerReglages(pr);
         route();
-        transfertMsg(nouveaux.length + " profil(s) ajouté(s), " + ajouts + " saisie(s) fusionnée(s)" + (conflits ? ", " + conflits + " conflit(s) ignoré(s) (données actuelles gardées)" : "") + (ignores ? ", " + ignores + " élément(s) mal formé(s) ignoré(s)" : "") + ".");
+        transfertMsg((regOk ? "" : "Attention : certains réglages n'ont pas pu être enregistrés. ") + (regTxt.length ? "Réglages : " + regTxt.join(" ; ") + ". " : "") + nouveaux.length + " profil(s) ajouté(s), " + ajouts + " saisie(s) fusionnée(s)" + (conflits ? ", " + conflits + " conflit(s) ignoré(s) (données actuelles gardées)" : "") + (ignores ? ", " + ignores + " élément(s) mal formé(s) ignoré(s)" : "") + ".");
       } catch (e) { etat = JSON.parse(avant); transfertMsg("Texte non reconnu. Rien n'a été modifié."); }
       return;
     }
