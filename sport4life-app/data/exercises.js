@@ -1,7 +1,9 @@
-// Matériel : corps, halteres, abwheel, corde, medball, gilet, autre
+// Matériel : corps, halteres, disques, elastique, abwheel, corde, medball, gilet, autre
 window.MATERIEL = [
   { id: "corps", nom: "Poids du corps" },
-  { id: "halteres", nom: "Haltères / poids" },
+  { id: "halteres", nom: "Haltères (ex. 2 x 3 kg)" },
+  { id: "disques", nom: "Disques de musculation (ex. 5 kg)" },
+  { id: "elastique", nom: "Élastique de résistance" },
   { id: "abwheel", nom: "Ab wheel" },
   { id: "corde", nom: "Corde à sauter" },
   { id: "medball", nom: "Medecine ball" },
@@ -66,5 +68,20 @@ window.EXERCICES = [
     erreurs: "Dos arrondi pour ramasser, lancer avec les bras seulement.", conseil: "Un geste proche des mouvements de capoeira : explosif et contrôlé. Fais-le sur un sol qui supporte l'impact." },
   { id: "corde", nom: "Corde à sauter", groupe: "Cardio", requis: ["corde"], muscles: "Mollets, cardio", series: "5 x 1 minute",
     etapes: ["Coudes près du corps, poignets qui font tourner la corde.", "Saute à quelques centimètres du sol, sur l'avant des pieds.", "Garde le regard devant et le buste droit.", "Repose-toi 30 secondes entre les séries."],
-    erreurs: "Sauts trop hauts, épaules crispées.", conseil: "Cardio modéré : à placer en fin de séance pour ne pas gêner la prise de masse." }
+    erreurs: "Sauts trop hauts, épaules crispées.", conseil: "Cardio modéré : à placer en fin de séance pour ne pas gêner la prise de masse." },
+  { id: "rowing-elastique", nom: "Rowing assis à l'élastique", groupe: "Tirer", requis: ["elastique"], muscles: "Dos, biceps, arrière d'épaules", series: "4 x 12 à 20",
+    etapes: ["Assis au sol, jambes tendues, élastique passé autour des pieds, une poignée dans chaque main.", "Dos droit, épaules basses, bras tendus.", "Tire les coudes vers l'arrière en serrant les omoplates.", "Reviens lentement en 3 secondes sans lâcher la tension."],
+    erreurs: "Dos qui s'arrondit, épaules qui montent vers les oreilles, retour trop rapide.", conseil: "Pour surcharger : raccourcis l'élastique (prends-le plus court) ou ajoute une pause de 2 secondes en fin de traction." },
+  { id: "developpe-epaules-elastique", nom: "Développé épaules à l'élastique", groupe: "Pousser", requis: ["elastique"], muscles: "Épaules, triceps", series: "4 x 10 à 15",
+    etapes: ["Pose un pied (ou les deux) sur l'élastique, poignées à hauteur d'épaules.", "Gaine le ventre, ne cambre pas le bas du dos.", "Pousse les poignées au-dessus de la tête jusqu'aux bras presque tendus.", "Redescends en contrôle en 3 secondes."],
+    erreurs: "Dos cambré, élastique qui glisse sous le pied, amplitude réduite.", conseil: "L'élastique est plus dur en haut du mouvement : garde un tempo lent et marque une pause en haut." },
+  { id: "tirage-vertical-elastique", nom: "Tirage vertical à l'élastique", groupe: "Tirer", requis: ["elastique", "autre"], muscles: "Grand dorsal, biceps", series: "4 x 10 à 15",
+    etapes: ["Fixe l'élastique en hauteur (barre de traction, porte avec un nœud d'ancrage solide).", "Mets-toi à genoux ou debout face à l'attache, bras tendus vers le haut.", "Tire les coudes vers les côtes en serrant les omoplates.", "Reviens lentement en 3 secondes."],
+    erreurs: "Attache pas assez solide (vérifie-la avant chaque série), tirer avec les épaules au lieu du dos.", conseil: "Teste l'ancrage avec une traction douce avant d'y mettre de la force." },
+  { id: "pompes-elastique", nom: "Pompes avec élastique dans le dos", groupe: "Pousser", requis: ["elastique"], muscles: "Pectoraux, triceps, épaules", series: "4 x 8 à 12",
+    etapes: ["Passe l'élastique derrière le dos, sous les aisselles, et tiens chaque bout sous une main.", "Place-toi en position de pompe, corps gainé.", "Descends en contrôle jusqu'à frôler le sol.", "Pousse fort : la tension augmente en haut."],
+    erreurs: "Élastique qui remonte vers le cou, bassin qui s'affaisse.", conseil: "Une surcharge facile à régler : plus l'élastique est court, plus la tension est forte." },
+  { id: "squat-disque", nom: "Squat goblet avec un disque", groupe: "Jambes", requis: ["disques"], muscles: "Cuisses, fessiers, tronc", series: "4 x 12 à 20",
+    etapes: ["Tiens un disque de 5 kg à deux mains contre la poitrine.", "Pieds un peu plus larges que les épaules, pointes légèrement ouvertes.", "Descends en gardant le dos droit, genoux dans l'axe des pieds.", "Remonte en poussant dans les talons."],
+    erreurs: "Talons qui décollent, genoux qui rentrent, buste qui plonge.", conseil: "5 kg est léger pour les jambes : joue sur les reps, un tempo lent (3 s à la descente) et des pauses courtes." }
 ];
