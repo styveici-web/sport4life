@@ -1,0 +1,163 @@
+# Sport4Life v28 - scripts de test (aucun secret, aucune donnée perso). Regénérer site/ = copie de sport4life-app + fichiers _t_*.html / _h_*.html
+# ===== mktest.py (tests import/export, Chrome headless: google-chrome --headless=new --virtual-time-budget=8000 --dump-dom file://.../_t_X.html)
+import json,sys
+idx=open('/tmp/rec/index.html').read()
+FULL={"id":"pA","nom":"Fixture A","materiel":["corps","elastique"],"journal":{"2026-11-10":{"pompes":[{"r":10,"k":0},{"r":9,"k":0}]},"2026-11-11":{"squat":[{"r":12,"k":5}]}},"valides":{"2026-11-10":["pompes"]},"poidsLog":[{"date":"2026-11-10","kg":70.5}]}
+LOCAL={"id":"pA","nom":"Fixture A","materiel":["corps"],"journal":{"2026-11-10":{"pompes":[{"r":8,"k":0}]}},"valides":{},"poidsLog":[]}
+GUIDE_LOC={"voix":True,"bip":True,"tempo":3,"p":{},"repos":60,"trans":30,"auto":True}
+def page(name,body):
+    pre='''<script>
+window.NOTIF=0;window.Capacitor={Plugins:{LocalNotifications:{schedule:function(){window.NOTIF++;return Promise.resolve()},requestPermissions:function(){return Promise.resolve({display:"granted"})},checkPermissions:function(){return Promise.resolve({display:"granted"})},cancel:function(){return Promise.resolve()},createChannel:function(){return Promise.resolve()}}}};
+window.LOGS=[];function L(k,v){LOGS.push(k+": "+(v===true?"OK":v===false?"ECHEC":v));}
+function ok(k,c){L(k,!!c);} 
+window.CONF=true;window.confirm=function(m){window.LASTCONF=m;return window.CONF;};
+window.alert=function(){};
+function LS(k){return localStorage.getItem(k);}
+function same(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+function fin(){document.documentElement.setAttribute("data-log",LOGS.join(" || "));}
+async function importer(txt){location.hash="#/profil";await sleep(150);var z=document.getElementById("zone-transfert");z.value=typeof txt==="string"?txt:JSON.stringify(txt);document.querySelector("[data-import]").click();await sleep(150);return (document.getElementById("transfert-msg")||{}).textContent||"";}
+var FULL=%s,LOCAL=%s,GUIDE_LOC=%s;
+function seed(profils,extra){localStorage.clear();localStorage.setItem("sport4life.v1",JSON.stringify({actif:profils.length?profils[0].id:null,profils:profils}));Object.keys(extra||{}).forEach(function(k){localStorage.setItem(k,typeof extra[k]==="string"?extra[k]:JSON.stringify(extra[k]))});}
+</script>'''%(json.dumps(FULL),json.dumps(LOCAL),json.dumps(GUIDE_LOC))
+    return pre, body
+def build(name,seedjs,bodyjs):
+    pre,_=page(name,bodyjs)
+    h=idx.replace('<script src="data/exercises.js',pre+'<script>'+seedjs+'</script>\n<script src="data/exercises.js',1)
+    h=h.replace('</body>','<script>window.addEventListener("load",async function(){try{await sleep(300);'+bodyjs+'}catch(e){L("EXCEPTION",String(e&&e.stack||e))}fin();});</script></body>')
+    open('/tmp/rec/site/_t_%s.html'%name,'w').write(h)
+# 1 export: seeded device with auto:true guide + rappel actif
+build('exp','seed([%s],{"sport4life.guide":%s,"sport4life.rappel":{"actif":true,"heure":"07:30"}});'%(json.dumps(FULL),json.dumps(GUIDE_LOC)),'''
+location.hash="#/profil";await sleep(200);document.querySelector("[data-export]").click();await sleep(100);
+var t=document.getElementById("zone-transfert").value;var o=JSON.parse(t);
+ok("T1 export: sans auto",o.reglages&&o.reglages.guide&&!("auto" in o.reglages.guide));
+ok("T1 export: rappel = heure+etat",same(o.reglages.rappel,{actif:true,heure:"07:30"}));
+ok("T1 export: profil complet",same(o.profils[0].journal,FULL.journal)&&same(o.profils[0].valides,FULL.valides)&&same(o.profils[0].poidsLog,FULL.poidsLog));
+LOGS.push("EXPORT="+btoa(unescape(encodeURIComponent(t))));
+''')
+IMP={"profils":[FULL],"reglages":{"guide":{"voix":True,"bip":False,"tempo":2,"p":{},"repos":45,"trans":20},"rappel":{"actif":True,"heure":"07:30"}}}
+IMPJ=json.dumps(json.dumps(IMP))
+HOST=json.dumps('{"profils":[{"id":"__proto__","nom":"x","journal":{"2026-11-10":{"__proto__":[{"r":1,"k":1}]}}},{"id":"constructor","journal":{}},{"id":"pH","nom":"H","materiel":["corps"],"journal":{"2026-11-10":{"constructor":[{"r":1,"k":1}],"pompes":[{"r":"x","k":1}]}},"valides":{"2026-11-10":["__proto__"]},"poidsLog":[{"date":"2026-11-10","kg":9999}]}],"reglages":{"guide":{"__proto__":{"polluted":1},"repos":9999,"tempo":0,"trans":15,"voix":"oui","reps":0},"rappel":{"actif":true,"heure":"99:99"}}}')
+SL='seed([%s],{"sport4life.guide":%s});'%(json.dumps(LOCAL),json.dumps(GUIDE_LOC))
+def T(name,sd,body): build(name,sd,body.replace('%IMP%',IMPJ).replace('%HOST%',HOST))
+T('A','localStorage.clear();','''
+var m=await importer(%IMP%);L("A msg",m);
+var e=JSON.parse(LS("sport4life.v1"));
+ok("A profil identique apres import",e.profils.length===1&&same(e.profils[0].journal,FULL.journal)&&same(e.profils[0].valides,FULL.valides)&&same(e.profils[0].poidsLog,FULL.poidsLog)&&e.profils[0].nom==="Fixture A");
+var g=JSON.parse(LS("sport4life.guide"));
+ok("A guide importe, auto non active",g.repos===45&&g.trans===20&&g.bip===false&&g.auto!==true);
+ok("A rappel = heure seule, desactive",same(JSON.parse(LS("sport4life.rappel")),{actif:false,heure:"07:30"}));
+ok("A zero notification programmee",window.NOTIF===0);
+var m2=await importer(%IMP%);L("A reimport",m2);ok("A reimport: rien de nouveau",/Rien/.test(m2));
+''')
+T('B','seed([%s],{"sport4life.guide":%s,"sport4life.rappel":{"actif":true,"heure":"06:00"}});'%(json.dumps(LOCAL),json.dumps(GUIDE_LOC)),'''
+var avant=LS("sport4life.guide"),avR=LS("sport4life.rappel");
+var m=await importer(%IMP%);L("B msg",m);
+var e=JSON.parse(LS("sport4life.v1")),p=e.profils[0];
+ok("B ajouts fusionnes (2e jour, validation, poids)",p.journal["2026-11-11"]&&p.valides["2026-11-10"]&&p.poidsLog.length===1);
+ok("B conflit garde en local",same(p.journal["2026-11-10"].pompes,[{r:8,k:0}]));
+ok("B resume nomme le profil et les reglages gardes",/Fixture A/.test(window.LASTCONF)&&/gard/.test(window.LASTCONF));
+ok("B reglages locaux inchanges",LS("sport4life.guide")===avant&&LS("sport4life.rappel")===avR);
+ok("B materiel local inchange",same(p.materiel,["corps"]));
+''')
+T('C',SL,'''
+var a=LS("sport4life.v1"),b=LS("sport4life.guide"),c=LS("sport4life.rappel");window.CONF=false;
+var m=await importer(%IMP%);L("C msg",m);
+ok("C annulation: rien modifie",LS("sport4life.v1")===a&&LS("sport4life.guide")===b&&LS("sport4life.rappel")===c);
+''')
+T('D',SL,'''
+var a=LS("sport4life.v1"),b=LS("sport4life.guide"),c=LS("sport4life.rappel");
+var orig=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==="sport4life.v1")throw new Error("quota");return orig.call(this,k,v)};
+var m=await importer(%IMP%);Storage.prototype.setItem=orig;L("D msg",m);
+ok("D echec ecriture profils: donnees et reglages intacts",LS("sport4life.v1")===a&&LS("sport4life.guide")===b&&LS("sport4life.rappel")===c);
+ok("D message d'echec",/impossible|intacts/i.test(m)||/impossible|intacts/i.test(document.body.innerText));
+''')
+T('E','seed([%s],{});'%json.dumps(LOCAL),'''
+var a=LS("sport4life.v1");var m=await importer("pas du json {");L("E msg",m);
+ok("E texte invalide: rien modifie",LS("sport4life.v1")===a&&/non reconnu/i.test(m));
+var m2=await importer({"profils":"x"});ok("E format faux: rien modifie",LS("sport4life.v1")===a);
+''')
+T('F','seed([%s],{});'%json.dumps(LOCAL),'''
+var m=await importer(%HOST%);L("F msg",m);
+ok("F pas de pollution de prototype",({}).polluted===undefined&&Object.prototype.polluted===undefined&&({}).r===undefined);
+var e=JSON.parse(LS("sport4life.v1"));
+ok("F profils hostiles ignores",e.profils.every(function(p){return p.id!=="__proto__"&&p.id!=="constructor"}));
+var g=LS("sport4life.guide");ok("F reglages hors bornes ecartes",!g||(JSON.parse(g).repos!==9999&&JSON.parse(g).tempo!==0));
+ok("F rappel invalide non importe",!LS("sport4life.rappel"));
+location.hash="#/";await sleep(200);ok("F accueil s'affiche",document.body.innerText.length>50);
+''')
+T('G',SL,'''
+var a=LS("sport4life.v1"),b=LS("sport4life.guide");
+var orig=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==="sport4life.rappel")throw new Error("quota");return orig.call(this,k,v)};
+var m=await importer(%IMP%);Storage.prototype.setItem=orig;L("G msg",m);
+ok("G echec 2e ecriture: profils et guide restaures",LS("sport4life.v1")===a&&LS("sport4life.guide")===b&&!LS("sport4life.rappel"));
+''')
+T('H','seed([%s],{"sport4life.guide":"{pas json"});'%json.dumps(LOCAL),'''
+var m=await importer(%IMP%);L("H msg",m);
+var g=null;try{g=JSON.parse(LS("sport4life.guide"))}catch(e){}
+ok("H reglages locaux casses remplaces",g&&g.repos===45&&/illisibles/.test(window.LASTCONF||""));
+''')
+
+# ===== mkh.py (parcours de la séance guidée réelle, états place/attente/serie/repos/pause/mouv/mus/ste, captures 390x844 @2x)
+import sys,re
+idx=open('/tmp/rec/index.html').read()
+state=sys.argv[1]
+seed='''<script>
+try{localStorage.clear();localStorage.setItem("sport4life.v1",JSON.stringify({actif:"p1",profils:[{id:"p1",nom:"Test fixture",materiel:["corps"]}]}));
+localStorage.setItem("sport4life.guide",JSON.stringify({voix:false,bip:false,trans:10,repos:30,tempo:3,p:{},auto:false}));}catch(e){}
+</script>'''
+drv='''<script>
+(function(){
+var st="%s", seq=[];
+function clk(a){var b=document.querySelector('button[data-guide="'+a+'"]'); if(!b){document.title+=" MISSING:"+a; return false;} b.click(); return true;}
+function txt(){var o=document.getElementById("guide-ses"); return o?o.innerText.replace(/\\s+/g," "):"";}
+function prim(){var b=document.querySelector(".gs-prim"); return b?b.textContent:"";}
+window.addEventListener("load",function(){
+ setTimeout(function(){
+  var ex=window.EXERCICES; function g(id){return ex.filter(function(e){return e.id===id})[0]}
+  window.S4Guide.sources.jour=function(){return [g("pompes"),g(ex.filter(function(e){return e.id!=="pompes"&&!e.requis.length})[0].id)]};
+  var b=document.createElement("button");b.setAttribute("data-guide","seance-jour");document.body.appendChild(b);b.click();
+  setTimeout(function(){
+   clk("sess-begin");
+   var steps=[]; 
+   function wait(cond,fn){var n=0;var iv=setInterval(function(){if(cond()||++n>300){clearInterval(iv);fn();}},100);}
+   function ph(name){return function(){var o=document.getElementById("guide-ses");return o&&o.innerText.indexOf(name)>-1}}
+   wait(function(){return prim()==="Je suis prêt"},function(){
+    log("place:"+prim());
+    if(st==="place") return done();
+    clk("sess-skip");
+    wait(function(){return prim()==="Démarrer la série"},function(){
+     log("attente:"+prim());
+     if(st==="attente") return done();
+     clk("sess-go");
+     wait(function(){return prim()==="Série terminée"},function(){
+      log("serie:"+prim()+" | "+document.getElementById("ses-msg").textContent);
+      if(st==="pause"){clk("pause");return setTimeout(function(){log("pause: sec="+Array.prototype.map.call(document.querySelectorAll(".gs-sec button"),function(x){return x.textContent}).join(",")+" | prim="+prim()+" | msg="+document.getElementById("ses-msg").textContent);clk("pause");setTimeout(function(){log("reprise: sec="+Array.prototype.map.call(document.querySelectorAll(".gs-sec button"),function(x){return x.textContent}).join(","));done()},300)},300);}
+      if(st==="serie"||st==="mouv"||st==="mus"||st==="ste"){ if(st!=="serie") clk("tab-"+st); return setTimeout(done,300);} 
+      clk("sess-skip");
+      wait(function(){return prim()==="Passer le repos"},function(){
+       log("repos:"+prim()+" | secondaires: "+Array.prototype.map.call(document.querySelectorAll(".gs-sec button"),function(x){return x.textContent}).join(","));
+       if(st==="repos") return done();
+       done();
+      });
+     });
+    });
+   });
+  },300);
+ },300);
+});
+function log(s){seq.push(s);}
+function done(){var m=document.createElement("pre");m.id="log";m.style.cssText="position:fixed;top:0;left:0;z-index:999;color:#0f0;font-size:9px";document.title=seq.join(" ; ");var r=document.documentElement; r.setAttribute("data-log",seq.join(" ; "));}
+})();
+</script>''' % state
+idx=idx.replace('<script src="data/exercises.js',seed+'\n<script src="data/exercises.js',1).replace('</body>',drv+'</body>')
+open('/tmp/rec/site/_h_%s.html'%state,'w').write(idx)
+
+# ===== shot.sh
+# usage: shot.sh state  -> /tmp/rec/shots/state.png + log
+s=$1; mkdir -p /tmp/rec/shots
+google-chrome --headless=new --no-sandbox --disable-gpu --window-size=390,844 --force-device-scale-factor=2 --virtual-time-budget=${2:-25000} --screenshot=/tmp/rec/shots/$s.png file:///tmp/rec/site/_h_$s.html >/dev/null 2>&1
+google-chrome --headless=new --no-sandbox --disable-gpu --window-size=390,844 --virtual-time-budget=${2:-25000} --dump-dom file:///tmp/rec/site/_h_$s.html 2>/dev/null | grep -o 'data-log="[^"]*"\|MISSING:[a-z-]*' | head -3
+# ===== runt.sh
+for n in "$@"; do echo "== $n"; google-chrome --headless=new --no-sandbox --disable-gpu --window-size=390,844 --virtual-time-budget=8000 --dump-dom file:///tmp/rec/site/_t_$n.html 2>/dev/null | grep -o 'data-log="[^"]*"' | sed 's/ || /\n  /g;s/data-log="/  /;s/"$//' | grep -v "^  EXPORT="; done
+# ===== sources illustrations: Wikimedia Commons Push-ups-1.png, Push-ups-2.png (Everkinetic, CC BY-SA 3.0) ; Muscles_front_and_back.svg (OpenStax / T. Kebert, CC BY-SA 4.0). SVG allégé: attributs inkscape/styles supprimés, <use> développés, classes m-pec (path847) m-del (path861) m-tri (path1542, path1513).
