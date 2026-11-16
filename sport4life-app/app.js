@@ -94,6 +94,11 @@
   }
 
 
+  var V = "3";
+  function vignette(e) {
+    if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
+    return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
+  }
   // ---------- Séance aléatoire + repas ----------
   function alea(tab) { return tab[Math.floor(Math.random() * tab.length)]; }
   function melange(tab) {
@@ -133,7 +138,7 @@
       h += '<h3 style="margin-top:16px">Exercices (' + faits.filter(function (id) { return a.exos.indexOf(id) !== -1; }).length + "/" + exos.length + " validés)</h3>";
       exos.forEach(function (e) {
         var fait = faits.indexOf(e.id) !== -1;
-        h += '<div class="exo verre"><div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + '</div><div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + '</strong></a><div class="doux">' + esc(e.series) + '</div></div><button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
+        h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + '</strong></a><div class="doux">' + esc(e.series) + '</div></div><button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
       });
       var kcal = 0, prot = 0;
       h += '<h3 style="margin-top:16px">Repas de la journée</h3>';
@@ -163,7 +168,7 @@
     h += '<h3 style="margin:6px 4px 10px">Séance proposée</h3>';
     s.liste.forEach(function (e) {
       var fait = faits.indexOf(e.id) !== -1;
-      h += '<div class="exo verre"><div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + '</div><div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div></div>" +
+      h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div></div>" +
         '<button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
     });
     var n = besoins(p);
@@ -195,7 +200,7 @@
     if (!liste.length) h += '<div class="carte verre"><p>Aucun exercice avec ce matériel dans ce groupe. Ajoute du matériel dans le <a href="#/profil">profil</a>.</p></div>';
     liste.forEach(function (e) {
       var ok = faisable(e, p);
-      h += '<a class="exo verre" href="#/exercice/' + e.id + '"><div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + '</div><div class="corps"><strong>' + esc(e.nom) + '</strong><div class="doux">' + esc(e.groupe) + " · " + esc(e.series) + "</div><div>" + etiquettesMat(e) + (ok ? "" : '<span class="etiquette">Matériel manquant</span>') + "</div></div></a>";
+      h += '<a class="exo verre" href="#/exercice/' + e.id + '">' + vignette(e) + '<div class="corps"><strong>' + esc(e.nom) + '</strong><div class="doux">' + esc(e.groupe) + " · " + esc(e.series) + "</div><div>" + etiquettesMat(e) + (ok ? "" : '<span class="etiquette">Matériel manquant</span>') + "</div></div></a>";
     });
     h += '<p class="doux">' + liste.length + " exercice" + (liste.length > 1 ? "s" : "") + " affiché" + (liste.length > 1 ? "s" : "") + " sur " + EXERCICES.length + ".</p>";
     vue.innerHTML = h;
@@ -205,7 +210,9 @@
     var e = exoParId(id);
     if (!e) { location.hash = "#/exercices"; return; }
     var h = '<p><a href="#/exercices">← Exercices</a></p><h2>' + esc(e.nom) + "</h2>";
-    h += '<div class="image-ph verre" role="img" aria-label="Image à venir"><div>Image<small>Image du mouvement à venir. Une source d\'images avec licence adaptée reste à choisir.</small></div></div>';
+    var ph = window.PHOTOS && window.PHOTOS[e.id];
+    if (ph && window.IMGS && window.IMGS[e.id]) h += '<figure class="photo-exo verre"><img src="' + window.IMGS[e.id] + '" alt="' + esc(e.nom) + '" width="520" height="390"><figcaption>Photo : ' + esc(ph.auteur) + ' / <a href="https://www.pexels.com/photo/' + ph.pexels + '/" target="_blank" rel="noopener">Pexels</a></figcaption></figure>';
+    else h += '<div class="image-ph verre" role="img" aria-label="Pas de photo"><div>Photo<small>Pas de photo pour ce mouvement pour l\'instant.</small></div></div>';
     h += '<div class="carte verre"><p><span class="etiquette">' + esc(e.groupe) + "</span>" + etiquettesMat(e) + '</p><p class="doux">Muscles : ' + esc(e.muscles) + "<br>Volume conseillé : " + esc(e.series) + "</p>";
     h += "<h3>Le mouvement pas à pas</h3><ol class=\"etapes\">" + e.etapes.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>";
     h += "<h3>Erreurs fréquentes</h3><p>" + esc(e.erreurs) + "</p><h3>Conseil</h3><p>" + esc(e.conseil) + "</p></div>";
