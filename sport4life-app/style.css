@@ -69,3 +69,11 @@ a{color:var(--accent)}
 .legende{font-size:.8rem;color:var(--ink2)}
 .legende span{display:inline-block;width:18px;height:3px;vertical-align:middle;margin:0 4px 0 8px;border-radius:2px}
 .legende .l1{background:var(--accent);margin-left:0}.legende .l2{background:#e5e7eb}
+
+details.carte summary{cursor:pointer;list-style:none;padding:2px 0}
+details.carte summary::-webkit-details-marker{display:none}
+details.carte summary::after{content:"+";float:right;color:var(--accent);font-weight:700}
+details.carte[open] summary::after{content:"\2212"}
+details.carte h4{margin:14px 0 4px;font-size:.95rem}
+details.carte ul{margin:4px 0 8px;padding-left:20px}
+details.carte li{margin:4px 0}
