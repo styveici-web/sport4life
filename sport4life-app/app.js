@@ -78,10 +78,46 @@
     return { profils: [], actif: null };
   }
   var etat = charger();
+  function signalerEchec(on) {
+    var b = document.getElementById("echec-ecriture");
+    if (!on) { if (b) b.remove(); return; }
+    if (b) return;
+    b = document.createElement("div"); b.id = "echec-ecriture"; b.setAttribute("role", "alert");
+    b.style.cssText = "position:fixed;left:12px;right:12px;top:12px;z-index:99;padding:12px 14px;border-radius:14px;background:#7f1d1d;color:#fff;font-weight:600";
+    b.textContent = "Enregistrement impossible : l'espace de stockage est plein ou refusé. Exporte tes données (Profil) avant de continuer.";
+    document.body.appendChild(b);
+  }
   function sauver() {
     etat.version = 3;
-    try { localStorage.setItem(CLE, JSON.stringify(etat)); } catch (e) {}
+    try { localStorage.setItem(CLE, JSON.stringify(etat)); signalerEchec(false); return true; } catch (e) { signalerEchec(true); return false; }
   }
+  // Fusion additive d'un profil importé dans un profil existant (même id) : rien n'est écrasé.
+  function fusionnerProfil(loc, imp, appliquer) {
+    var r = { ajouts: 0, conflits: 0 };
+    var j = imp.journal && typeof imp.journal === "object" ? imp.journal : {};
+    Object.keys(j).forEach(function (d) {
+      var jl = loc.journal[d] || (appliquer ? (loc.journal[d] = {}) : {});
+      Object.keys(j[d] || {}).forEach(function (id) {
+        if (!(id in jl)) { r.ajouts++; if (appliquer) jl[id] = j[d][id]; }
+        else if (JSON.stringify(jl[id]) !== JSON.stringify(j[d][id])) r.conflits++;
+      });
+    });
+    var v = imp.valides && typeof imp.valides === "object" ? imp.valides : {};
+    Object.keys(v).forEach(function (d) {
+      var vl = loc.valides[d] || (appliquer ? (loc.valides[d] = []) : []);
+      (Array.isArray(v[d]) ? v[d] : []).forEach(function (id) {
+        if (vl.indexOf(id) === -1) { r.ajouts++; if (appliquer) vl.push(id); }
+      });
+    });
+    (Array.isArray(imp.poidsLog) ? imp.poidsLog : []).forEach(function (l) {
+      if (!l || !l.date) return;
+      var ex = loc.poidsLog.filter(function (x) { return x.date === l.date; })[0];
+      if (!ex) { r.ajouts++; if (appliquer) loc.poidsLog.push({ date: l.date, kg: l.kg }); }
+      else if (ex.kg !== l.kg) r.conflits++;
+    });
+    return r;
+  }
+  window.S4Test = { fusionnerProfil: fusionnerProfil };
   function profil() {
     if (!etat.profils.length) return null;
     for (var i = 0; i < etat.profils.length; i++) if (etat.profils[i].id === etat.actif) return etat.profils[i];
@@ -136,7 +172,7 @@
   }
 
 
-  var V = "26";
+  var V = "27";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -800,7 +836,7 @@
 
   // ---------- Export / import ----------
   function blocTransfert() {
-    return '<div class="carte verre"><h3>Copier mes données</h3><p class="doux">Pour passer du site à l\'appli Android (ou l\'inverse) : exporte ici, copie le texte, puis colle-le dans l\'autre et importe. L\'import ajoute les profils absents, il ne remplace rien.</p><textarea id="zone-transfert" rows="4" style="width:100%" aria-label="Données exportées ou à importer"></textarea><p style="margin-top:10px"><button class="second" data-export="1">Exporter</button> <button class="second" data-import="1">Importer</button></p><p class="doux" id="transfert-msg" role="status"></p></div>';
+    return '<div class="carte verre"><h3>Copier mes données</h3><p class="doux">Pour passer du site à l\'appli Android (ou l\'inverse) : exporte ici, copie le texte, puis colle-le dans l\'autre et importe. L\'import ajoute les profils absents et fusionne les séances manquantes des profils déjà présents, sans rien remplacer.</p><textarea id="zone-transfert" rows="4" style="width:100%" aria-label="Données exportées ou à importer"></textarea><p style="margin-top:10px"><button class="second" data-export="1">Exporter</button> <button class="second" data-import="1">Importer</button></p><p class="doux" id="transfert-msg" role="status"></p><p class="doux">Version de l\'appli : ' + V + '</p></div>';
   }
   function transfertMsg(t) { var e = document.getElementById("transfert-msg"); if (e) e.textContent = t; }
 
@@ -875,24 +911,36 @@
       transfertMsg(z && z.value ? "Texte prêt à copier." : "Rien à exporter."); return;
     }
     if (t.dataset.import) {
+      var avant = JSON.stringify(etat);
       try {
-        var imp = JSON.parse(document.getElementById("zone-transfert").value), ajoutes = 0;
+        var imp = JSON.parse(document.getElementById("zone-transfert").value);
         if (!imp || !Array.isArray(imp.profils)) throw new Error("format");
-        var etaitVide = !profil();
+        var etaitVide = !profil(), nouveaux = [], fusions = [], ajouts = 0, conflits = 0;
         imp.profils.forEach(function (q) {
           if (!q || typeof q !== "object") return;
           q = normaliser(q);
-          var existe = etat.profils.some(function (x) { return x.id === q.id; });
-          if (!existe) { etat.profils.push(q); ajoutes++; }
+          var loc = etat.profils.filter(function (x) { return x.id === q.id; })[0];
+          if (!loc) nouveaux.push(q);
+          else { var r = fusionnerProfil(loc, q, false); ajouts += r.ajouts; conflits += r.conflits; if (r.ajouts) fusions.push([loc, q]); }
         });
-        if (ajoutes) {
-          if (etaitVide) { etat.actif = (imp.actif && etat.profils.some(function (x) { return x.id === imp.actif; })) ? imp.actif : etat.profils[0].id; }
-          sauver();
+        if (!nouveaux.length && !ajouts) {
+          transfertMsg(conflits ? "Rien à ajouter. " + conflits + " saisie" + (conflits > 1 ? "s" : "") + " différente" + (conflits > 1 ? "s" : "") + " : tes données actuelles sont gardées." : "Rien de nouveau à importer.");
+          return;
         }
-        if (etaitVide && ajoutes) { location.hash = "#/profil"; route(); return; }
-        if (ajoutes) route();
-        transfertMsg(ajoutes + " profil" + (ajoutes > 1 ? "s" : "") + " ajouté" + (ajoutes > 1 ? "s" : "") + ".");
-      } catch (e) { transfertMsg("Texte non reconnu. Rien n'a été modifié."); }
+        var resume = nouveaux.length + " profil(s) nouveau(x), " + ajouts + " saisie(s) ajoutée(s) à des profils existants" + (conflits ? ", " + conflits + " saisie(s) différente(s) NON écrasée(s) (tes données actuelles sont gardées)" : "") + ". Rien n'est supprimé ni remplacé. Continuer ?";
+        if (!confirm(resume)) { transfertMsg("Import annulé. Rien n'a été modifié."); return; }
+        nouveaux.forEach(function (q) { etat.profils.push(q); });
+        fusions.forEach(function (c) { fusionnerProfil(c[0], c[1], true); });
+        if (etaitVide) { etat.actif = (imp.actif && etat.profils.some(function (x) { return x.id === imp.actif; })) ? imp.actif : etat.profils[0].id; }
+        if (!sauver()) {
+          etat = JSON.parse(avant); signalerEchec(true);
+          transfertMsg("Import impossible : l'enregistrement a échoué. Tes données d'avant sont intactes.");
+          return;
+        }
+        if (etaitVide) { location.hash = "#/profil"; route(); return; }
+        route();
+        transfertMsg(nouveaux.length + " profil(s) ajouté(s), " + ajouts + " saisie(s) fusionnée(s)" + (conflits ? ", " + conflits + " conflit(s) ignoré(s) (données actuelles gardées)." : "."));
+      } catch (e) { etat = JSON.parse(avant); transfertMsg("Texte non reconnu. Rien n'a été modifié."); }
       return;
     }
     var p = profil();
