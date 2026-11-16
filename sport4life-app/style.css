@@ -19,7 +19,7 @@ h3{font-size:1.05rem;margin:0 0 6px}
 p{margin:0 0 10px}
 .doux{color:var(--ink2);font-size:.9rem}
 .bas{position:fixed;left:12px;right:12px;bottom:max(10px,env(safe-area-inset-bottom));z-index:5;display:flex;border-radius:26px;padding:6px;max-width:720px;margin:0 auto}
-.bas a{flex:1;text-align:center;padding:12px 1px;font-size:.78rem;border-radius:20px;color:var(--ink2);text-decoration:none;font-weight:600;min-height:44px}
+.bas a{flex:1;text-align:center;padding:12px 3px;font-size:.8rem;border-radius:20px;color:var(--ink2);text-decoration:none;font-weight:600;min-height:44px}
 .bas a[aria-current="page"]{background:rgba(90,169,255,.22);color:#fff}
 .exo{display:flex;align-items:center;gap:12px;color:inherit;text-decoration:none;border-radius:18px;padding:12px;margin-bottom:10px}
 .exo .corps{flex:1;min-width:0}
