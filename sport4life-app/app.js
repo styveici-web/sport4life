@@ -136,7 +136,7 @@
   }
 
 
-  var V = "18";
+  var V = "19";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -368,6 +368,62 @@
   }
 
   // ---------- Vues ----------
+  // ---------- Échauffement et retour au calme ----------
+  // Repères : NHS (échauffement d'au moins 6 min, étirements d'environ 5 min, 15 à 20 s par étirement),
+  // CSEP / Behm 2016 (échauffement dynamique avant, étirements maintenus plutôt après),
+  // Cochrane / Herbert 2011 (étirer ne garantit ni moins de courbatures ni moins de blessures).
+  var ECH_MOUV = {
+    Pousser: ["Cercles d'épaules : 10 vers l'avant, 10 vers l'arrière.", "Cercles de bras : 10 petits puis 10 grands, dans chaque sens.", "Ouvertures de poitrine : bras écartés puis ramenés devant toi, 10 fois, sans forcer.", "Pompes lentes mains surélevées (sur une chaise) ou sur les genoux : 1 série de 6 à 8, facile."],
+    Tirer: ["Cercles d'épaules : 10 vers l'avant, 10 vers l'arrière.", "Serrer les omoplates : bras le long du corps, rapproche les omoplates 2 secondes, 10 fois.", "Rotations du buste, bras croisés sur la poitrine : 8 de chaque côté.", "Chat-vache à quatre pattes : 8 allers-retours lents."],
+    Jambes: ["Flexions de jambes au poids du corps, amplitude confortable : 10.", "Fentes marchées courtes : 6 par jambe.", "Balancements de jambe d'avant en arrière, une main sur un mur : 10 par jambe.", "Rotations de chevilles : 10 par pied, dans chaque sens."],
+    Tronc: ["Rotations du buste debout, bras en croix : 10 par côté.", "Chat-vache à quatre pattes : 8 allers-retours lents.", "Bras et jambe opposés tendus à quatre pattes : 6 par côté, sans cambrer.", "Montées de genoux lentes : 20."],
+    Cardio: ["Marche rapide puis petit trot sur place : 2 minutes.", "Talons-fesses légers : 20.", "Montées de genoux : 20.", "Montées sur la pointe des pieds : 15."]
+  };
+  var CALME_ETIR = {
+    Pousser: ["Pectoraux : pose la main et l'avant-bras sur un mur, coude à hauteur d'épaule, tourne doucement le buste de l'autre côté.", "Triceps : une main derrière la nuque, l'autre main guide le coude vers le haut.", "Épaule : bras tendu devant toi, ramène-le vers la poitrine avec l'autre bras."],
+    Tirer: ["Dos : à genoux, bras tendus devant sur le sol ou une chaise, recule les hanches (posture de l'enfant), dos détendu.", "Avant-bras et biceps : bras tendu devant, paume vers l'avant, tire doucement les doigts vers toi avec l'autre main.", "Côté du buste : debout, un bras levé, incline-toi doucement de l'autre côté."],
+    Jambes: ["Fessiers : allongé sur le dos, croise une jambe sur la cuisse opposée et tire la cuisse vers la poitrine.", "Arrière de cuisse : allongé sur le dos, jambe levée tenue sous le genou, jambe d'appui pliée, rapproche la jambe tendue de toi.", "Mollet : un pas en avant, jambe arrière tendue, talon arrière au sol, main au mur si besoin.", "Avant de cuisse : allongé sur le côté, attrape le pied et rapproche le talon de la fesse, genoux l'un contre l'autre.", "Intérieur de cuisse : assis, plantes des pieds l'une contre l'autre, laisse les genoux descendre."],
+    Tronc: ["Torsion allongée : sur le dos, genoux pliés, laisse tomber les genoux d'un côté, épaules au sol.", "Posture de l'enfant : à genoux, fesses vers les talons, bras tendus devant.", "Avant du tronc : sur le ventre, appuyé sur les avant-bras, soulève doucement la poitrine, sans douleur dans le bas du dos."],
+    Cardio: ["Mollet : un pas en avant, jambe arrière tendue, talon arrière au sol, main au mur si besoin.", "Avant de cuisse : debout ou sur le côté, attrape le pied et rapproche le talon de la fesse.", "Arrière de cuisse : allongé sur le dos, jambe levée tenue sous le genou."]
+  };
+  function groupesSeance(liste, focus) {
+    var g = [focus];
+    liste.forEach(function (e) { if (g.indexOf(e.groupe) === -1) g.push(e.groupe); });
+    return g.filter(function (x) { return ECH_MOUV[x]; });
+  }
+  function choisir(table, groupes, max) {
+    var out = [], i = 0, ajoute = true;
+    while (out.length < max && ajoute) {
+      ajoute = false;
+      groupes.forEach(function (g) { var t = table[g]; if (t && i < t.length && out.length < max) { out.push(t[i]); ajoute = true; } });
+      i++;
+    }
+    return out;
+  }
+  function liHtml(tab) { return "<ul>" + tab.map(function (t) { return "<li>" + esc(t) + "</li>"; }).join("") + "</ul>"; }
+  function blocEchauffement(p, groupes) {
+    var mats = p.materiel || [];
+    var h = '<details class="carte verre" id="echauffement"><summary><strong>Échauffement</strong> <span class="doux">(6 à 8 minutes, avant la séance)</span></summary>';
+    h += '<p class="doux">Objectif : monter doucement le rythme cardiaque et préparer les articulations utilisées. Mouvements dynamiques, sans rester en étirement long.</p>';
+    h += "<h4>1. Monter en température (3 minutes)</h4>";
+    var gen = ["Marche sur place puis en avant et en arrière, bras actifs : 1 minute.", "Montées de genoux légères : 30 secondes.", "Talons-fesses légers : 30 secondes."];
+    if (mats.indexOf("corde") !== -1) gen.push("Option avec ta corde à sauter : sauts très tranquilles pendant 2 à 3 minutes à la place des trois points ci-dessus.");
+    h += liHtml(gen);
+    h += "<h4>2. Mobilité pour les muscles du jour (3 à 4 minutes)</h4>" + liHtml(choisir(ECH_MOUV, groupes, 5));
+    if (["gilet", "disques", "halteres", "elastique"].some(function (m) { return mats.indexOf(m) !== -1; })) {
+      h += "<h4>3. Séries de montée en charge</h4><p>Avant le premier exercice avec charge, fais 1 à 2 séries légères du même mouvement : 8 à 10 répétitions faciles, loin de l'échec.</p>";
+    }
+    return h + "</details>";
+  }
+  function blocRetourCalme(groupes) {
+    var h = '<details class="carte verre" id="retour-calme"><summary><strong>Retour au calme et étirements</strong> <span class="doux">(5 à 8 minutes, après la séance)</span></summary>';
+    h += "<h4>1. Redescendre (2 à 3 minutes)</h4><p>Marche lente et respiration calme, jusqu'à ce que le souffle et le cœur redescendent.</p>";
+    h += "<h4>2. Étirements maintenus : 15 à 20 secondes par côté</h4>" + liHtml(choisir(CALME_ETIR, groupes, 6));
+    h += '<p class="doux">Va jusqu\'à une tension légère, jamais jusqu\'à la douleur. Respire normalement, ne rebondis pas, et fais les deux côtés.</p>';
+    h += '<div class="alerte">Les étirements servent à se détendre et à garder de l\'amplitude. Les études ne montrent pas qu\'ils réduisent à coup sûr les courbatures ou les blessures. Arrête en cas de douleur ; si tu as une blessure ou un doute, demande l\'avis d\'un professionnel de santé. Repères : NHS, position du CSEP (Behm 2016), revue Cochrane (Herbert 2011).</div>';
+    return h + "</details>";
+  }
+
   function vueAujourdhui() {
     var p = profil(), s = seance(p), jour = aujourdhui();
     var faits = p.valides[jour] || [];
@@ -377,12 +433,15 @@
     h += "<h3>Focus : " + esc(s.focus) + "</h3>";
     h += '<p class="doux">Exercices choisis selon ton matériel (' + p.materiel.length + " sélectionné" + (p.materiel.length > 1 ? "s" : "") + "). " + nbFaits + "/" + s.liste.length + " validé" + (nbFaits > 1 ? "s" : "") + ".</p></div>";
     h += blocAleatoire(p, faits);
+    var grp = groupesSeance(s.liste, s.focus);
+    h += blocEchauffement(p, grp);
     h += '<h3 style="margin:6px 4px 10px">Séance proposée</h3>';
     s.liste.forEach(function (e) {
       var fait = faits.indexOf(e.id) !== -1;
       h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div>" + infoSeries(p, e) + "</div>" +
         '<button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
     });
+    h += blocRetourCalme(grp);
     var n = besoins(p);
     h += '<div class="carte verre"><h3>Nutrition pour la prise de masse</h3>';
     if (n) {
