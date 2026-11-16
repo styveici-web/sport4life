@@ -33,19 +33,48 @@
       valides: {}, poidsLog: []
     };
   }
-  function charger() {
+  function normaliser(p) {
+    if (!p.id) p.id = uid();
+    if (!Array.isArray(p.materiel)) p.materiel = ["corps"];
+    if (!p.valides || typeof p.valides !== "object") p.valides = {};
+    if (!Array.isArray(p.poidsLog)) p.poidsLog = [];
+    ["nom", "taille", "poids", "age", "sexe", "note"].forEach(function (k) { if (p[k] == null) p[k] = ""; });
+    if (!p.activite) p.activite = "1.55";
+    return p;
+  }
+  var alerteDonnees = false;
+  function sauvegarderBrut(brut) {
     try {
-      var s = JSON.parse(localStorage.getItem(CLE));
-      if (s && s.profils && s.profils.length) return s;
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(CLE + ".sauvegarde") === 0 && localStorage.getItem(k) === brut) return;
+      }
+      localStorage.setItem(CLE + ".sauvegarde." + Date.now(), brut);
     } catch (e) {}
-    var p = exemple();
-    return { profils: [p], actif: p.id };
+  }
+  function charger() {
+    var brut = null;
+    try { brut = localStorage.getItem(CLE); } catch (e) {}
+    if (brut) {
+      try {
+        var s = JSON.parse(brut);
+        if (s && Array.isArray(s.profils) && s.profils.length) {
+          s.profils.forEach(normaliser);
+          if (!s.actif) s.actif = s.profils[0].id;
+          return s;
+        }
+      } catch (e) {}
+      sauvegarderBrut(brut);
+      alerteDonnees = true;
+    }
+    return { profils: [], actif: null };
   }
   var etat = charger();
   function sauver() {
     try { localStorage.setItem(CLE, JSON.stringify(etat)); } catch (e) {}
   }
   function profil() {
+    if (!etat.profils.length) return null;
     for (var i = 0; i < etat.profils.length; i++) if (etat.profils[i].id === etat.actif) return etat.profils[i];
     etat.actif = etat.profils[0].id;
     return etat.profils[0];
@@ -74,7 +103,11 @@
     var foc = ROTATION[jourAnnee() % ROTATION.length];
     var principaux = ok.filter(function (e) { return e.groupe === foc; });
     var autres = ok.filter(function (e) { return e.groupe !== foc && e.groupe !== "Cardio"; });
-    var liste = principaux.slice(0, 4);
+    var liste = [];
+    if (principaux.length > 4) {
+      var dec = jourAnnee() % principaux.length;
+      for (var q = 0; q < 4; q++) liste.push(principaux[(dec + q) % principaux.length]);
+    } else liste = principaux.slice(0, 4);
     for (var i = 0; liste.length < 4 && i < autres.length; i++) {
       var k = (jourAnnee() + i) % autres.length;
       if (liste.indexOf(autres[k]) === -1) liste.push(autres[k]);
@@ -94,17 +127,65 @@
   }
 
 
-  var V = "4";
+  var V = "5";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
   }
+  function alerteHtml() {
+    if (!alerteDonnees) return "";
+    return '<div class="alerte"><strong>Données illisibles.</strong> Tes données enregistrées dans ce navigateur n\'ont pas pu être lues. Je n\'ai rien effacé : une copie brute est gardée. <button class="second" data-sauvegarde="1">Télécharger la copie</button></div>';
+  }
+  function champsProfil(p) {
+    var h = '<label for="nom">Nom</label><input type="text" id="nom" value="' + esc(p.nom) + '">';
+    h += '<div class="grille"><div><label for="taille">Taille (cm)</label><input type="number" id="taille" inputmode="decimal" value="' + esc(p.taille) + '"></div>';
+    h += '<div><label for="poids">Poids (kg)</label><input type="number" id="poids" inputmode="decimal" step="0.1" value="' + esc(p.poids) + '"></div>';
+    h += '<div><label for="age">Âge</label><input type="number" id="age" inputmode="numeric" value="' + esc(p.age) + '"></div>';
+    h += '<div><label for="sexe">Sexe</label><select id="sexe"><option value="">Choisir</option><option value="h"' + (p.sexe === "h" ? " selected" : "") + '>Homme</option><option value="f"' + (p.sexe === "f" ? " selected" : "") + ">Femme</option></select></div></div>";
+    h += '<label for="activite">Niveau d\'activité</label><select id="activite">' + ACTIVITES.map(function (x) {
+      return '<option value="' + x[0] + '"' + (p.activite === x[0] ? " selected" : "") + ">" + x[1] + "</option>";
+    }).join("") + "</select>";
+    h += '<h3 style="margin-top:16px">Matériel disponible</h3><div class="puces">';
+    MATERIEL.forEach(function (m) {
+      var coche = m.id === "corps" || p.materiel.indexOf(m.id) !== -1;
+      h += '<label class="puce"><input type="checkbox" data-mat="' + m.id + '"' + (coche ? " checked" : "") + (m.id === "corps" ? " disabled" : "") + ">" + esc(m.nom) + "</label>";
+    });
+    return h + "</div>";
+  }
+  function vueBienvenue() {
+    var vide = { nom: "", taille: "", poids: "", age: "", sexe: "", activite: "1.55", materiel: ["corps"] };
+    var h = alerteHtml() + "<h2>Bienvenue sur Sport4Life</h2>";
+    h += '<div class="carte verre"><p>Ton coach perso pour la prise de muscle : séances adaptées à ton matériel, repas suggérés et suivi. Crée ton profil pour commencer. Tout reste enregistré dans ce navigateur, sur cet appareil.</p></div>';
+    h += '<form class="carte verre" id="bienvenue" autocomplete="off"><h3>Ton profil</h3>' + champsProfil(vide);
+    h += '<p class="doux" style="margin-top:10px">Taille, poids, âge et sexe servent à estimer tes besoins en calories et protéines. Tu peux les ajouter plus tard.</p>';
+    h += '<button type="submit">Créer mon profil</button></form>';
+    h += '<div class="carte verre"><p class="doux">Tu veux juste découvrir l\'app ? Essaie le profil exemple (capoeiriste, petit matériel).</p><button class="second" data-exemple="1">Utiliser le profil exemple</button></div>';
+    vue.innerHTML = h;
+  }
+
   // ---------- Séance aléatoire + repas ----------
   function alea(tab) { return tab[Math.floor(Math.random() * tab.length)]; }
   function melange(tab) {
     var a = tab.slice();
     for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
     return a;
+  }
+  function genererRepas(p) {
+    var n = besoins(p), cible = n ? n.cible : 2800, prot = n ? n.proteines : 0;
+    var pd = REPAS.filter(function (r) { return r.moment === "Petit-déjeuner"; });
+    var pl = REPAS.filter(function (r) { return r.moment === "Repas"; });
+    var co = REPAS.filter(function (r) { return r.moment === "Collation"; });
+    var bons = [], meilleur = null, ecartMin = 1e9;
+    for (var t = 0; t < 600; t++) {
+      var mp = melange(pl).slice(0, Math.random() < 0.5 ? 2 : 3), mc = melange(co).slice(0, Math.random() < 0.5 ? 1 : 2);
+      var liste = [alea(pd), mp[0], mc[0]].concat(mp.slice(1), mc.slice(1));
+      var kcal = 0, pr = 0;
+      liste.forEach(function (r) { kcal += r.kcal; pr += r.prot; });
+      var ecart = Math.abs(kcal - cible) + (prot && pr < prot ? (prot - pr) * 10 : 0);
+      if (ecart <= 100) bons.push(liste);
+      if (ecart < ecartMin) { ecartMin = ecart; meilleur = liste; }
+    }
+    return (bons.length ? alea(bons) : meilleur).map(function (r) { return r.id; });
   }
   function genererAleatoire(p) {
     var ok = EXERCICES.filter(function (e) { return faisable(e, p); });
@@ -115,14 +196,8 @@
     });
     var cardio = ok.filter(function (e) { return e.groupe === "Cardio"; });
     if (cardio.length) exos.push(alea(cardio).id);
-    var pdej = alea(REPAS.filter(function (r) { return r.moment === "Petit-déjeuner"; }));
-    var plats = melange(REPAS.filter(function (r) { return r.moment === "Repas"; }));
-    var coll = melange(REPAS.filter(function (r) { return r.moment === "Collation"; }));
-    var repas = [pdej, plats[0], plats[1], coll[0]];
-    var n = besoins(p);
-    var total = repas.reduce(function (a, r) { return a + r.kcal; }, 0);
-    if (n && n.cible - total > 250) repas.push(coll[1]);
-    return { date: aujourdhui(), exos: exos, repas: repas.map(function (r) { return r.id; }) };
+    var repas = genererRepas(p);
+    return { date: aujourdhui(), exos: exos, repas: repas };
   }
   function repasParId(id) {
     for (var i = 0; i < REPAS.length; i++) if (REPAS[i].id === id) return REPAS[i];
@@ -149,7 +224,7 @@
       h += "<p><strong>Total : ≈ " + kcal + " kcal, " + prot + " g de protéines</strong>";
       var n = besoins(p);
       if (n) h += '<br><span class="doux">Objectif estimé : ' + n.cible + " kcal et " + n.proteines + " g de protéines.</span>";
-      else h += '<br><span class="doux">Renseigne ton profil pour comparer à ton objectif.</span>';
+      else h += '<br><span class="doux">Profil incomplet : repas choisis pour environ 2 800 kcal (valeur type). Renseigne ta taille, ton poids, ton âge et ton sexe dans le profil pour viser ton objectif.</span>';
       h += "</p>";
       h += '<div class="alerte">Repas indicatifs, valeurs approximatives (ordre de grandeur, pas des mesures). Ajuste les quantités à ton appétit et à ton objectif. Pas un avis médical.</div>';
     }
@@ -160,10 +235,11 @@
   function vueAujourdhui() {
     var p = profil(), s = seance(p), jour = aujourdhui();
     var faits = p.valides[jour] || [];
-    var h = "<h2>Séance du jour</h2>";
+    var nbFaits = s.liste.filter(function (e) { return faits.indexOf(e.id) !== -1; }).length;
+    var h = alerteHtml() + "<h2>Séance du jour</h2>";
     h += '<div class="carte verre"><p class="doux">' + esc(new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })) + "</p>";
     h += "<h3>Focus : " + esc(s.focus) + "</h3>";
-    h += '<p class="doux">Exercices choisis selon ton matériel (' + p.materiel.length + " sélectionné" + (p.materiel.length > 1 ? "s" : "") + "). " + faits.length + "/" + s.liste.length + " validé" + (faits.length > 1 ? "s" : "") + ".</p></div>";
+    h += '<p class="doux">Exercices choisis selon ton matériel (' + p.materiel.length + " sélectionné" + (p.materiel.length > 1 ? "s" : "") + "). " + nbFaits + "/" + s.liste.length + " validé" + (nbFaits > 1 ? "s" : "") + ".</p></div>";
     h += blocAleatoire(p, faits);
     h += '<h3 style="margin:6px 4px 10px">Séance proposée</h3>';
     s.liste.forEach(function (e) {
@@ -222,7 +298,7 @@
 
   function vueProfil() {
     var p = profil();
-    var h = "<h2>Profil</h2>";
+    var h = alerteHtml() + "<h2>Profil</h2>";
     h += '<div class="carte verre"><label for="sel">Profil actif</label><select id="sel">' + etat.profils.map(function (q) {
       return '<option value="' + q.id + '"' + (q.id === p.id ? " selected" : "") + ">" + esc(q.nom) + "</option>";
     }).join("") + '</select><p style="margin-top:10px"><button class="second" data-nouveau="1">Nouveau profil</button></p></div>';
@@ -247,7 +323,7 @@
     h += '<div class="carte verre"><h3>Suivi du poids</h3>';
     var log = p.poidsLog.slice(-8).reverse();
     h += log.length ? "<p>" + log.map(function (l) { return esc(l.date) + " : " + esc(l.kg) + " kg"; }).join("<br>") + "</p>" : '<p class="doux">Aucune mesure pour l\'instant.</p>';
-    h += '<button class="second" data-pesee="1">Ajouter le poids du profil à aujourd\'hui</button></div>';
+    h += '<label for="pesee">Poids du jour (kg)</label><div class="ligne"><input type="number" id="pesee" inputmode="decimal" step="0.1" placeholder="ex. 74.5"><button data-pesee="1">Ajouter</button></div><p class="doux" style="margin-top:8px">Le poids du profil est mis à jour avec cette valeur.</p></div>';
     var nbJours = Object.keys(p.valides).length, nbEx = 0;
     Object.keys(p.valides).forEach(function (k) { nbEx += p.valides[k].length; });
     h += '<div class="carte verre"><h3>Progression</h3><p>' + nbEx + " exercice" + (nbEx > 1 ? "s" : "") + " validé" + (nbEx > 1 ? "s" : "") + " sur " + nbJours + " jour" + (nbJours > 1 ? "s" : "") + '.</p></div>';
@@ -256,20 +332,26 @@
     vue.innerHTML = h;
   }
 
-  function lireForm() {
-    var p = profil();
+  function lireForm(p) {
+    p = p || profil();
     var g = function (i) { return document.getElementById(i).value; };
     p.nom = g("nom").trim() || "Sans nom";
     p.taille = g("taille"); p.poids = g("poids"); p.age = g("age"); p.sexe = g("sexe"); p.activite = g("activite");
     p.materiel = [].slice.call(document.querySelectorAll("[data-mat]")).filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute("data-mat"); });
     sauver();
+    return p;
   }
 
   // ---------- Événements ----------
   vue.addEventListener("click", function (ev) {
     var t = ev.target.closest("button");
     if (!t) return;
+    if (t.dataset.sauvegarde) { telechargerSauvegarde(); return; }
+    if (t.dataset.exemple) {
+      var ex = exemple(); etat.profils.push(ex); etat.actif = ex.id; sauver(); route(); return;
+    }
     var p = profil();
+    if (!p) return;
     if (t.dataset.alea) {
       p.aleatoire = genererAleatoire(p); sauver(); vueAujourdhui();
       var bloc = document.getElementById("alea"); if (bloc) bloc.scrollIntoView({ block: "start" });
@@ -284,8 +366,9 @@
       var n = exemple(); n.nom = "Nouveau profil"; n.note = ""; n.materiel = ["corps"]; n.activite = "1.55";
       etat.profils.push(n); etat.actif = n.id; sauver(); route();
     } else if (t.dataset.pesee) {
-      var kg = parseFloat(p.poids);
-      if (!(kg > 0)) { alert("Renseigne d'abord le poids du profil."); return; }
+      var kg = parseFloat(String(document.getElementById("pesee").value).replace(",", "."));
+      if (!(kg > 20 && kg < 400)) { alert("Entre ton poids du jour en kg (par exemple 74.5)."); return; }
+      p.poids = String(kg);
       var d = aujourdhui();
       p.poidsLog = p.poidsLog.filter(function (l) { return l.date !== d; });
       p.poidsLog.push({ date: d, kg: kg }); sauver(); vueProfil();
@@ -299,8 +382,28 @@
   vue.addEventListener("change", function (ev) {
     if (ev.target.id === "sel") { etat.actif = ev.target.value; sauver(); route(); }
   });
+  function telechargerSauvegarde() {
+    var brut = "";
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(CLE + ".sauvegarde") === 0) { brut = localStorage.getItem(k); break; }
+      }
+    } catch (e) {}
+    var lien = document.createElement("a");
+    lien.href = URL.createObjectURL(new Blob([brut], { type: "application/json" }));
+    lien.download = "sport4life-sauvegarde.json";
+    document.body.appendChild(lien); lien.click(); lien.remove();
+  }
   vue.addEventListener("submit", function (ev) {
-    ev.preventDefault(); lireForm(); route();
+    ev.preventDefault();
+    if (ev.target.id === "bienvenue") {
+      var np = normaliser({ id: uid(), nom: "", materiel: [] });
+      lireForm(np);
+      if (np.nom === "Sans nom") np.nom = "Mon profil";
+      etat.profils.push(np); etat.actif = np.id; sauver(); route(); return;
+    }
+    lireForm(); route();
     var ok = document.createElement("p"); ok.className = "doux"; ok.textContent = "Profil enregistré.";
     vue.insertBefore(ok, vue.firstChild);
   });
@@ -308,6 +411,11 @@
   function route() {
     var h = location.hash.replace(/^#\/?/, "") || "aujourdhui";
     var parts = h.split("/"), nav = parts[0];
+    if (!profil()) {
+      document.getElementById("profil-actif").textContent = "Bienvenue";
+      [].forEach.call(document.querySelectorAll("[data-nav]"), function (x) { x.removeAttribute("aria-current"); });
+      vueBienvenue(); window.scrollTo(0, 0); return;
+    }
     document.getElementById("profil-actif").textContent = profil().nom;
     [].forEach.call(document.querySelectorAll("[data-nav]"), function (a) {
       if (a.dataset.nav === (nav === "exercice" ? "exercices" : nav)) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
