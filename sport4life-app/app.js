@@ -128,7 +128,7 @@
 
   // ---------- Nutrition ----------
   function besoins(p) {
-    var t = parseFloat(p.taille), w = parseFloat(p.poids), a = parseFloat(p.age);
+    var t = parseFloat(String(p.taille).replace(",", ".")), w = parseFloat(String(p.poids).replace(",", ".")), a = parseFloat(p.age);
     if (!(t > 0 && w > 0 && a > 0) || (p.sexe !== "h" && p.sexe !== "f")) return null;
     var bmr = 10 * w + 6.25 * t - 5 * a + (p.sexe === "h" ? 5 : -161);
     var entretien = bmr * parseFloat(p.activite || "1.55");
@@ -136,7 +136,7 @@
   }
 
 
-  var V = "24";
+  var V = "25";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -177,7 +177,7 @@
     if (der) h += '<p class="doux">Dernière fois (' + esc(dateCourte(der.date)) + ") : " + esc(resumeSeries(der.series)) + "</p>";
     if (note) h += '<p class="doux fait">' + esc(note) + "</p>";
     series.forEach(function (s, i) {
-      h += '<div class="serie"><span class="num">S' + (i + 1) + '</span><input type="number" class="in-r" inputmode="numeric" min="0" placeholder="reps" aria-label="Répétitions, série ' + (i + 1) + '" value="' + esc(s.r || "") + '"><input type="number" class="in-k" inputmode="decimal" min="0" step="0.5" placeholder="kg" aria-label="Charge en kg, série ' + (i + 1) + '" value="' + esc(s.k || "") + '"></div>';
+      h += '<div class="serie"><span class="num">S' + (i + 1) + '</span><input type="number" class="in-r" inputmode="numeric" min="0" placeholder="reps" aria-label="Répétitions, série ' + (i + 1) + '" value="' + esc(s.r || "") + '"><input type="text" class="in-k" inputmode="decimal" autocomplete="off" placeholder="kg" aria-label="Charge en kg, série ' + (i + 1) + '" value="' + esc(s.k || "") + '"></div>';
     });
     h += '<p class="doux">Charge (kg) : laisse vide pour le poids du corps. Les champs sont préremplis avec ta dernière séance.</p>';
     h += '<div class="rang"><button class="second" data-serie-plus="' + e.id + '">+ série</button><button class="second" data-serie-moins="' + e.id + '">- série</button></div>';
@@ -273,8 +273,8 @@
   }
   function champsProfil(p) {
     var h = '<label for="nom">Nom</label><input type="text" id="nom" value="' + esc(p.nom) + '">';
-    h += '<div class="grille"><div><label for="taille">Taille (cm)</label><input type="number" id="taille" inputmode="decimal" value="' + esc(p.taille) + '"></div>';
-    h += '<div><label for="poids">Poids (kg)</label><input type="number" id="poids" inputmode="decimal" step="0.1" value="' + esc(p.poids) + '"></div>';
+    h += '<div class="grille"><div><label for="taille">Taille (cm)</label><input type="text" id="taille" inputmode="decimal" autocomplete="off" value="' + esc(p.taille) + '"></div>';
+    h += '<div><label for="poids">Poids (kg)</label><input type="text" id="poids" inputmode="decimal" autocomplete="off" value="' + esc(p.poids) + '"></div>';
     h += '<div><label for="age">Âge</label><input type="number" id="age" inputmode="numeric" value="' + esc(p.age) + '"></div>';
     h += '<div><label for="sexe">Sexe</label><select id="sexe"><option value="">Choisir</option><option value="h"' + (p.sexe === "h" ? " selected" : "") + '>Homme</option><option value="f"' + (p.sexe === "f" ? " selected" : "") + ">Femme</option></select></div></div>";
     h += '<label for="activite">Niveau d\'activité</label><select id="activite">' + ACTIVITES.map(function (x) {
@@ -818,8 +818,8 @@
     }).join("") + '</select><p style="margin-top:10px"><button class="second" data-nouveau="1">Nouveau profil</button></p></div>';
     h += '<form class="carte verre" id="form" autocomplete="off"><h3>Informations</h3>';
     h += '<label for="nom">Nom</label><input type="text" id="nom" value="' + esc(p.nom) + '">';
-    h += '<div class="grille"><div><label for="taille">Taille (cm)</label><input type="number" id="taille" inputmode="decimal" value="' + esc(p.taille) + '"></div>';
-    h += '<div><label for="poids">Poids (kg)</label><input type="number" id="poids" inputmode="decimal" step="0.1" value="' + esc(p.poids) + '"></div>';
+    h += '<div class="grille"><div><label for="taille">Taille (cm)</label><input type="text" id="taille" inputmode="decimal" autocomplete="off" value="' + esc(p.taille) + '"></div>';
+    h += '<div><label for="poids">Poids (kg)</label><input type="text" id="poids" inputmode="decimal" autocomplete="off" value="' + esc(p.poids) + '"></div>';
     h += '<div><label for="age">Âge</label><input type="number" id="age" inputmode="numeric" value="' + esc(p.age) + '"></div>';
     h += '<div><label for="sexe">Sexe</label><select id="sexe"><option value="">Choisir</option><option value="h"' + (p.sexe === "h" ? " selected" : "") + '>Homme</option><option value="f"' + (p.sexe === "f" ? " selected" : "") + ">Femme</option></select></div></div>";
     h += '<label for="activite">Niveau d\'activité</label><select id="activite">' + ACTIVITES.map(function (a) {
@@ -837,7 +837,7 @@
     h += '<div class="carte verre"><h3>Suivi du poids</h3>';
     var log = p.poidsLog.slice(-8).reverse();
     h += log.length ? "<p>" + log.map(function (l) { return esc(l.date) + " : " + esc(l.kg) + " kg"; }).join("<br>") + "</p>" : '<p class="doux">Aucune mesure pour l\'instant.</p>';
-    h += '<label for="pesee">Poids du jour (kg)</label><div class="ligne"><input type="number" id="pesee" inputmode="decimal" step="0.1" placeholder="ex. 74.5"><button data-pesee="1">Ajouter</button></div><p class="doux" style="margin-top:8px">Le poids du profil est mis à jour avec cette valeur.</p></div>';
+    h += '<label for="pesee">Poids du jour (kg)</label><div class="ligne"><input type="text" id="pesee" inputmode="decimal" autocomplete="off" placeholder="ex. 74,5 ou 74.5"><button data-pesee="1">Ajouter</button></div><p class="doux" style="margin-top:8px">Le poids du profil est mis à jour avec cette valeur.</p></div>';
     var nbJours = Object.keys(p.valides).length, nbEx = 0;
     Object.keys(p.valides).forEach(function (k) { nbEx += p.valides[k].length; });
     h += '<div class="carte verre"><h3>Progression</h3><p>' + nbEx + " exercice" + (nbEx > 1 ? "s" : "") + " validé" + (nbEx > 1 ? "s" : "") + " sur " + nbJours + " jour" + (nbJours > 1 ? "s" : "") + '.</p></div>';
@@ -853,7 +853,7 @@
     p = p || profil();
     var g = function (i) { return document.getElementById(i).value; };
     p.nom = g("nom").trim() || "Sans nom";
-    p.taille = g("taille"); p.poids = g("poids"); p.age = g("age"); p.sexe = g("sexe"); p.activite = g("activite");
+    p.taille = g("taille").trim().replace(",", "."); p.poids = g("poids").trim().replace(",", "."); p.age = g("age"); p.sexe = g("sexe"); p.activite = g("activite");
     p.materiel = [].slice.call(document.querySelectorAll("[data-mat]")).filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute("data-mat"); });
     sauver();
     return p;
@@ -890,6 +890,7 @@
           sauver();
         }
         if (etaitVide && ajoutes) { location.hash = "#/profil"; route(); return; }
+        if (ajoutes) route();
         transfertMsg(ajoutes + " profil" + (ajoutes > 1 ? "s" : "") + " ajouté" + (ajoutes > 1 ? "s" : "") + ".");
       } catch (e) { transfertMsg("Texte non reconnu. Rien n'a été modifié."); }
       return;
@@ -908,9 +909,9 @@
         if (ok.length) {
           p.journal[jr][sid] = ok;
           if (p.valides[jr].indexOf(sid) === -1) p.valides[jr].push(sid);
-        } else delete p.journal[jr][sid];
+        } else { if (p.journal[jr][sid]) { delete p.journal[jr][sid]; var iv = p.valides[jr].indexOf(sid); if (iv !== -1) p.valides[jr].splice(iv, 1); } }
         sauver();
-        vueExercice(sid, null, ok.length ? "Enregistré : " + resumeSeries(ok) + ". Exercice validé pour aujourd'hui." : "Aucune série saisie : rien d'enregistré pour aujourd'hui.");
+        vueExercice(sid, null, ok.length ? "Enregistré : " + resumeSeries(ok) + ". Exercice validé pour aujourd'hui." : "Aucune série saisie : séries effacées et validation retirée pour aujourd'hui (si elle venait de ces séries).");
       }
       return;
     }
