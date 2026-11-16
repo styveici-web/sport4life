@@ -136,7 +136,7 @@
   }
 
 
-  var V = "9";
+  var V = "10";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -394,6 +394,41 @@
     vue.innerHTML = h;
   }
 
+  // ---------- Onglet Repas ----------
+  function repasDuJour(p) {
+    var j = aujourdhui();
+    if (p.aleatoire && p.aleatoire.date === j && p.aleatoire.repas) return p.aleatoire.repas;
+    if (p.repasJour && p.repasJour.date === j && Array.isArray(p.repasJour.repas)) return p.repasJour.repas;
+    p.repasJour = { date: j, repas: genererRepas(p) };
+    sauver();
+    return p.repasJour.repas;
+  }
+  function vueRepas() {
+    var p = profil(), j = aujourdhui();
+    var ids = repasDuJour(p), repas = ids.map(repasParId).filter(Boolean);
+    var h = alerteHtml() + "<h2>Repas du jour</h2>";
+    h += '<div class="carte verre"><p class="doux">' + esc(new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })) + '</p>';
+    var kcal = 0, prot = 0;
+    repas.forEach(function (r) {
+      kcal += r.kcal; prot += r.prot;
+      h += '<div class="repas"><div class="ligne"><strong>' + esc(r.nom) + '</strong><span class="etiquette">' + esc(r.moment) + '</span></div><div class="doux">' + esc(r.detail) + '</div><div class="doux">≈ ' + r.kcal + " kcal, " + r.prot + " g de protéines</div></div>";
+    });
+    h += "<p><strong>Total : ≈ " + kcal + " kcal, " + prot + " g de protéines</strong>";
+    var n = besoins(p);
+    if (n) h += '<br><span class="doux">Objectif estimé : ' + n.cible + " kcal et " + n.proteines + " g de protéines.</span>";
+    else h += '<br><span class="doux">Profil incomplet : repas choisis pour environ 2 800 kcal (valeur type). Renseigne ta taille, ton poids, ton âge et ton sexe dans le <a href="#/profil">profil</a> pour viser ton objectif.</span>';
+    h += '</p><button data-repas-regen="1">Autres repas</button></div>';
+    h += '<div class="carte verre"><h3>Tous les repas</h3><p class="doux">Pour varier ou remplacer un repas.</p>';
+    ["Petit-déjeuner", "Repas", "Collation"].forEach(function (m) {
+      h += '<h3 style="margin-top:12px">' + esc(m) + "</h3>";
+      REPAS.filter(function (r) { return r.moment === m; }).forEach(function (r) {
+        h += '<div class="repas"><strong>' + esc(r.nom) + '</strong><div class="doux">' + esc(r.detail) + '</div><div class="doux">≈ ' + r.kcal + " kcal, " + r.prot + " g de protéines</div></div>";
+      });
+    });
+    h += '</div><div class="alerte">Repas indicatifs, valeurs approximatives (ordre de grandeur, pas des mesures). Ajuste les quantités à ton appétit et à ton objectif. Pas un avis médical.</div>';
+    vue.innerHTML = h;
+  }
+
   function vueExercices() {
     var p = profil();
     var filtre = vueExercices.filtre || "Tous";
@@ -593,6 +628,11 @@
       }
       return;
     }
+    if (t.dataset.repasRegen) {
+      var nr = genererRepas(p); p.repasJour = { date: aujourdhui(), repas: nr };
+      if (p.aleatoire && p.aleatoire.date === aujourdhui()) p.aleatoire.repas = nr;
+      sauver(); vueRepas(); return;
+    }
     if (t.dataset.alea) {
       p.aleatoire = genererAleatoire(p); sauver(); vueAujourdhui();
       var bloc = document.getElementById("alea"); if (bloc) bloc.scrollIntoView({ block: "start" });
@@ -664,6 +704,7 @@
     });
     if (nav === "exercices") vueExercices();
     else if (nav === "exercice") vueExercice(parts[1]);
+    else if (nav === "repas") vueRepas();
     else if (nav === "historique") vueHistorique();
     else if (nav === "profil") vueProfil();
     else vueAujourdhui();
