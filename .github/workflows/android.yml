@@ -46,6 +46,8 @@ jobs:
       - name: Icône S4 (adaptative)
         working-directory: android-app
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq imagemagick fonts-dejavu-core
           mkdir -p assets
           convert -size 1024x1024 xc:'#2563eb' assets/icon-background.png
           convert -size 1024x1024 xc:none -fill white -font DejaVu-Sans-Bold -pointsize 400 -gravity center -annotate +0+0 'S4' assets/icon-foreground.png \
