@@ -68,10 +68,8 @@ jobs:
           grep -q POST_NOTIFICATIONS "$M" || sed -i 's#<application#<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application#' "$M"
           cat "$M"
 
-      - name: Clé de signature fixe
+      - name: Numéro de version Android
         run: |
-          mkdir -p ~/.android
-          base64 -d android-app/debug.keystore.b64 > ~/.android/debug.keystore
           F=android-app/android/app/build.gradle
           sed -i "s/versionCode [0-9]*/versionCode $((100 + GITHUB_RUN_NUMBER))/" "$F"
           grep -n versionCode "$F"
@@ -83,11 +81,17 @@ jobs:
           ./gradlew assembleDebug --no-daemon
 
       - name: Permissions de l'APK
+        env:
+          KS_B64: ${{ secrets.S4_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.S4_KEYSTORE_PASS }}
         run: |
           APK=android-app/android/app/build/outputs/apk/debug/app-debug.apk
           cp "$APK" Sport4Life-debug.apk
+          test -n "$KS_B64" && test -n "$KS_PASS"
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/s4.p12"
           BT=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)
-          "$BT/apksigner" sign --ks ~/.android/debug.keystore --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey Sport4Life-debug.apk
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/s4.p12" --ks-pass env:KS_PASS --key-pass env:KS_PASS --ks-key-alias sport4life Sport4Life-debug.apk
+          rm -f "$RUNNER_TEMP/s4.p12"
           "$BT/apksigner" verify --print-certs Sport4Life-debug.apk | head -3
           AAPT=$(ls $ANDROID_HOME/build-tools/*/aapt | tail -1)
           "$AAPT" dump permissions Sport4Life-debug.apk | tee permissions.txt
@@ -105,5 +109,5 @@ jobs:
           gh release delete android-latest --yes --cleanup-tag || true
           gh release create android-latest Sport4Life-debug.apk \
             --title "Sport4Life Android (debug)" \
-            --notes "APK debug signé avec la clé debug, à installer sur Android. Build du ${GITHUB_SHA::7}." \
+            --notes "APK signé avec la clé Sport4Life (secret du dépôt), à installer sur Android. Build du ${GITHUB_SHA::7}." \
             --prerelease
