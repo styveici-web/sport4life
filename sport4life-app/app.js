@@ -136,7 +136,7 @@
   }
 
 
-  var V = "13";
+  var V = "14";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -532,12 +532,67 @@
   var GARMIN = "https://personal.connectapi.garmin.com", CLE_SECURE = "s4_garmin_cle";
   var montreJeton = null, montreEtat = { msg: "", data: null, charge: false };
   function plug(nom) { try { return window.Capacitor && window.Capacitor.registerPlugin ? window.Capacitor.registerPlugin(nom) : null; } catch (e) { return null; } }
-  function coffreLire() {
-    var s = plug("SecureStorage"); if (!s) return Promise.reject(new Error("coffre"));
-    return s.internalGetItem({ prefixedKey: CLE_SECURE, sync: false }).then(function (r) { return r && r.data ? String(r.data) : null; });
+  function detailErr(e) { var d = e && (e.code || e.errorMessage || e.message); return d ? String(d).replace(/[^\w .:-]/g, "").slice(0, 60) : "inconnu"; }
+  // Repli chiffré (jamais en clair) : AES-GCM avec une clé non exportable gardée dans IndexedDB.
+  function idb() {
+    return new Promise(function (ok, ko) {
+      if (!window.indexedDB) return ko(new Error("idb"));
+      var r = indexedDB.open("s4_coffre", 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore("s"); };
+      r.onsuccess = function () { ok(r.result); }; r.onerror = function () { ko(r.error || new Error("idb")); };
+    });
   }
-  function coffreEcrire(v) { var s = plug("SecureStorage"); if (!s) return Promise.reject(new Error("coffre")); return s.internalSetItem({ prefixedKey: CLE_SECURE, data: v, sync: false }); }
-  function coffreEffacer() { var s = plug("SecureStorage"); if (!s) return Promise.reject(new Error("coffre")); return s.internalRemoveItem({ prefixedKey: CLE_SECURE, sync: false }); }
+  function idbOp(mode, f) {
+    return idb().then(function (db) {
+      return new Promise(function (ok, ko) {
+        var t = db.transaction("s", mode), st = t.objectStore("s"), out = f(st);
+        t.oncomplete = function () { var v = out && out.result; db.close(); ok(v); }; t.onerror = function () { ko(t.error || new Error("idb")); }; t.onabort = t.onerror;
+      });
+    });
+  }
+  function crypt() { return window.crypto && window.crypto.subtle ? window.crypto.subtle : null; }
+  function replisEcrire(v) {
+    var c = crypt(); if (!c) return Promise.reject(new Error("webcrypto"));
+    return idbOp("readonly", function (st) { return st.get("k"); }).then(function (k) {
+      if (k) return k;
+      return c.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]).then(function (nk) {
+        return idbOp("readwrite", function (st) { return st.put(nk, "k"); }).then(function () { return nk; });
+      });
+    }).then(function (k) {
+      var iv = window.crypto.getRandomValues(new Uint8Array(12));
+      return c.encrypt({ name: "AES-GCM", iv: iv }, k, new TextEncoder().encode(v)).then(function (ct) {
+        return idbOp("readwrite", function (st) { return st.put({ iv: iv, ct: ct }, "c"); });
+      });
+    });
+  }
+  function replisLire() {
+    var c = crypt(); if (!c) return Promise.resolve(null);
+    return idbOp("readonly", function (st) { return st.get("k"); }).then(function (k) {
+      return idbOp("readonly", function (st) { return st.get("c"); }).then(function (d) {
+        if (!k || !d) return null;
+        return c.decrypt({ name: "AES-GCM", iv: d.iv }, k, d.ct).then(function (p) { return new TextDecoder().decode(p); });
+      });
+    }).catch(function () { return null; });
+  }
+  function replisEffacer() { return idbOp("readwrite", function (st) { st.delete("k"); return st.delete("c"); }).catch(function () {}); }
+  function coffreLire() {
+    var s = plug("SecureStorage");
+    var natifLire = s ? Promise.resolve().then(function () { return s.internalGetItem({ prefixedKey: CLE_SECURE, sync: false }); }).then(function (r) { return r && r.data ? String(r.data) : null; }).catch(function () { return null; }) : Promise.resolve(null);
+    return natifLire.then(function (v) { return v || replisLire(); });
+  }
+  function coffreEcrire(v) {
+    var s = plug("SecureStorage");
+    var essai = s ? Promise.resolve().then(function () { return s.internalSetItem({ prefixedKey: CLE_SECURE, data: v, sync: false }); }) : Promise.reject(new Error("plugin-absent"));
+    return essai.then(function () { montreEtat.stockage = "Keystore Android"; return replisEffacer(); }).catch(function (e1) {
+      montreEtat.detail1 = detailErr(e1);
+      return replisEcrire(v).then(function () { montreEtat.stockage = "chiffrée sur l'appareil (clé non exportable)"; }).catch(function (e2) { montreEtat.detail2 = detailErr(e2); throw e2; });
+    });
+  }
+  function coffreEffacer() {
+    var s = plug("SecureStorage");
+    var n = s ? Promise.resolve().then(function () { return s.internalRemoveItem({ prefixedKey: CLE_SECURE, sync: false }); }).catch(function () {}) : Promise.resolve();
+    return n.then(replisEffacer);
+  }
   function httpGarmin(methode, chemin, auth) {
     var h = plug("CapacitorHttp"); if (!h) return Promise.reject(new Error("http"));
     return h.request({ url: GARMIN + chemin, method: methode, headers: { Authorization: auth, Accept: "application/json" }, responseType: "text" });
@@ -602,7 +657,7 @@
     if (montreEtat.msg) h += '<p role="status">' + esc(montreEtat.msg) + "</p>";
     h += '<label for="garmin-cle">Clé API Garmin (Personal API Key)</label><input type="password" id="garmin-cle" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Colle la clé ici">';
     h += '<p style="margin-top:10px" class="ligne"><button data-montre-save="1">Enregistrer la clé</button><button class="second" data-montre-refresh="1">Actualiser</button></p>';
-    h += '<p class="doux">La clé est gardée dans le stockage sécurisé du téléphone (Keystore Android). Elle n\'est ni dans l\'export de tes données ni dans le dépôt. <button class="second" data-montre-del="1">Supprimer la clé de l\'appli</button></p></div>';
+    h += '<p class="doux">La clé est gardée dans le stockage sécurisé du téléphone (Keystore Android). Si le Keystore échoue, elle est chiffrée avec une clé non exportable. Jamais en clair, ni dans l\'export de tes données, ni dans le dépôt. <button class="second" data-montre-del="1">Supprimer la clé de l\'appli</button></p></div>';
     var D = montreEtat.data;
     if (D) {
       var js = D.jour || {}, sl = D.sommeil || {}, fc = D.fc || {};
@@ -638,7 +693,7 @@
       var z = document.getElementById("garmin-cle"), v = z ? z.value.trim() : "";
       if (v.length < 20) { montreEtat.msg = "La clé semble incomplète. Colle la clé entière affichée par Garmin Connect."; vueMontre(); return true; }
       z.value = "";
-      coffreEcrire(v).then(function () { montreJeton = null; chargerMontre(); }).catch(function () { montreEtat.msg = "Impossible d'enregistrer la clé dans le stockage sécurisé. La clé n'a pas été gardée."; vueMontre(); });
+      coffreEcrire(v).then(function () { montreJeton = null; chargerMontre().then(function () { if (!montreEtat.msg) montreEtat.msg = "Clé enregistrée : " + montreEtat.stockage + "."; vueMontre(); }); }).catch(function () { montreEtat.msg = "Impossible d'enregistrer la clé de façon sécurisée, elle n'a pas été gardée. Détail technique : coffre « " + (montreEtat.detail1 || "?") + " », repli « " + (montreEtat.detail2 || "?") + " »."; vueMontre(); });
       v = "";
       return true;
     }
