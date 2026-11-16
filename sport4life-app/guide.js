@@ -406,37 +406,52 @@
     } finally { cfg.voix = voixVoulue; }
   }
 
-  // Réglages (préférences uniquement) : lecture pour l'export, application validée pour l'import.
+  // Réglages (préférences) : lecture pour l'export, application validée pour l'import.
+  // Les valeurs fausses sont écartées une à une ; "auto" (lancement sans appui) n'est jamais exporté ni importé.
   function nombreEntre(v, a, b) { return typeof v === "number" && isFinite(v) && Math.floor(v) === v && v >= a && v <= b; }
+  function dans(v, liste) { return typeof v === "number" && liste.indexOf(v) !== -1; }
+  var DEFAUT = { voix: true, bip: true, tempo: 3, repos: 0, trans: 30 };
   function reglagesValides(o) {
     if (!o || typeof o !== "object" || Array.isArray(o)) return null;
-    var n = {};
-    if ("voix" in o) { if (typeof o.voix !== "boolean") return null; n.voix = o.voix; }
-    if ("bip" in o) { if (typeof o.bip !== "boolean") return null; n.bip = o.bip; }
-    if ("auto" in o) { if (typeof o.auto !== "boolean") return null; n.auto = o.auto; }
-    if ("tempo" in o) { if (!nombreEntre(o.tempo, 1, 6)) return null; n.tempo = o.tempo; }
-    if ("repos" in o) { if (!nombreEntre(o.repos, 0, 600)) return null; n.repos = o.repos; }
-    if ("trans" in o) { if (!nombreEntre(o.trans, 5, 180)) return null; n.trans = o.trans; }
+    var n = {}, ecartes = 0;
+    ["voix", "bip"].forEach(function (k) { if (k in o) { if (typeof o[k] === "boolean") n[k] = o[k]; else ecartes++; } });
+    if ("tempo" in o) { if (nombreEntre(o.tempo, 1, 6)) n.tempo = o.tempo; else ecartes++; }
+    if ("repos" in o) { if (dans(o.repos, [0, 30, 45, 60, 90, 120, 150, 180])) n.repos = o.repos; else ecartes++; }
+    if ("trans" in o) { if (dans(o.trans, [10, 15, 20, 30, 45, 60])) n.trans = o.trans; else ecartes++; }
     if ("p" in o) {
-      if (!o.p || typeof o.p !== "object" || Array.isArray(o.p)) return null;
-      n.p = {};
-      var bon = true;
-      Object.keys(o.p).forEach(function (id) {
-        if (id === "__proto__" || id === "constructor" || id === "prototype") return;
-        var q = o.p[id]; if (!q || typeof q !== "object" || Array.isArray(q)) { bon = false; return; }
-        var r = {};
-        if ("reps" in q) { if (!nombreEntre(q.reps, 1, 1000)) { bon = false; return; } r.reps = q.reps; }
-        if ("duree" in q) { if (!nombreEntre(q.duree, 1, 3600)) { bon = false; return; } r.duree = q.duree; }
-        n.p[id] = r;
-      });
-      if (!bon) return null;
+      if (!o.p || typeof o.p !== "object" || Array.isArray(o.p)) ecartes++;
+      else {
+        n.p = {};
+        Object.keys(o.p).forEach(function (id) {
+          if (id === "__proto__" || id === "constructor" || id === "prototype") { ecartes++; return; }
+          var q = o.p[id]; if (!q || typeof q !== "object" || Array.isArray(q)) { ecartes++; return; }
+          var r = {};
+          if ("reps" in q) { if (nombreEntre(q.reps, 1, 100)) r.reps = q.reps; else ecartes++; }
+          if ("duree" in q) { if (nombreEntre(q.duree, 5, 600)) r.duree = q.duree; else ecartes++; }
+          if (Object.keys(r).length) n.p[id] = r;
+        });
+      }
     }
+    var cles = Object.keys(n);
+    if (!cles.length) return null;
+    Object.defineProperty(n, "_ecartes", { value: ecartes, enumerable: false });
     return n;
   }
-  window.S4Guide = { reglagesValides: reglagesValides, appliquerReglages: function (o) {
+  // Forme comparable : valeurs par défaut complétées, clés triées, sans "auto".
+  function formeComparable(o) {
+    var n = reglagesValides(o); if (!n) return null;
+    var c = { voix: DEFAUT.voix, bip: DEFAUT.bip, tempo: DEFAUT.tempo, repos: DEFAUT.repos, trans: DEFAUT.trans, p: {} };
+    Object.keys(n).forEach(function (k) { if (k !== "p") c[k] = n[k]; });
+    Object.keys(n.p || {}).sort().forEach(function (id) { var q = n.p[id], r = {}; Object.keys(q).sort().forEach(function (k) { r[k] = q[k]; }); c.p[id] = r; });
+    return JSON.stringify(c);
+  }
+  window.S4Guide = { reglagesValides: reglagesValides, formeComparable: formeComparable,
+    instantane: function () { return JSON.stringify(cfg); },
+    restaurer: function (json) { try { var o = JSON.parse(json); Object.keys(cfg).forEach(function (k) { delete cfg[k]; }); Object.keys(o).forEach(function (k) { cfg[k] = o[k]; }); } catch (e) {} },
+    appliquerReglages: function (o) {
     var n = reglagesValides(o); if (!n) return false;
     var avant = JSON.stringify(cfg);
     Object.keys(n).forEach(function (k) { cfg[k] = n[k]; });
-    try { localStorage.setItem(CLE, JSON.stringify(cfg)); return true; } catch (e) { var o = JSON.parse(avant); Object.keys(o).forEach(function (k) { cfg[k] = o[k]; }); return false; }
+    try { localStorage.setItem(CLE, JSON.stringify(cfg)); return true; } catch (e) { var ancien = JSON.parse(avant); Object.keys(cfg).forEach(function (k) { delete cfg[k]; }); Object.keys(ancien).forEach(function (k) { cfg[k] = ancien[k]; }); return false; }
   }, sources: sources, panel: panel, stop: arret, etat: function () { return etat; }, _cfg: cfg, _tenu: tenu };
 })();
