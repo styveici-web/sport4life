@@ -46,3 +46,6 @@ a{color:var(--accent)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (min-width:768px){body{padding-top:84px}.grille.trois{grid-template-columns:repeat(3,1fr)}}
 @media (prefers-reduced-motion:no-preference){.carte,.exo{transition:transform .15s}.exo:hover{transform:translateY(-2px)}}
+
+.repas{border:1px solid var(--bord);border-radius:16px;padding:10px 12px;margin-bottom:8px;background:rgba(255,255,255,.07)}
+#alea{scroll-margin-top:76px}
