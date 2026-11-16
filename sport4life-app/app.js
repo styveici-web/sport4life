@@ -136,7 +136,7 @@
   }
 
 
-  var V = "25";
+  var V = "26";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
