@@ -136,7 +136,7 @@
   }
 
 
-  var V = "21";
+  var V = "22";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -385,9 +385,9 @@
   var CALME_ETIR = {
     Pousser: ["Pectoraux : pose la main et l'avant-bras sur un mur, coude à hauteur d'épaule, tourne doucement le buste de l'autre côté.", "Triceps : une main derrière la nuque, l'autre main guide le coude vers le haut.", "Épaule : bras tendu devant toi, ramène-le vers la poitrine avec l'autre bras."],
     Tirer: ["Dos : à genoux, bras tendus devant sur le sol ou une chaise, recule les hanches (posture de l'enfant), dos détendu.", "Avant-bras et biceps : bras tendu devant, paume vers l'avant, tire doucement les doigts vers toi avec l'autre main.", "Côté du buste : debout, un bras levé, incline-toi doucement de l'autre côté."],
-    Jambes: ["Fessiers : allongé sur le dos, croise une jambe sur la cuisse opposée et tire la cuisse vers la poitrine.", "Arrière de cuisse : allongé sur le dos, jambe levée tenue sous le genou, jambe d'appui pliée, rapproche la jambe tendue de toi.", "Mollet : un pas en avant, jambe arrière tendue, talon arrière au sol, main au mur si besoin.", "Avant de cuisse : allongé sur le côté, attrape le pied et rapproche le talon de la fesse, genoux l'un contre l'autre.", "Intérieur de cuisse : assis, plantes des pieds l'une contre l'autre, laisse les genoux descendre."],
+    Jambes: ["Fessiers : allongé sur le dos, croise une jambe sur la cuisse opposée et tire la cuisse vers la poitrine.", "Arrière de cuisse : assis, une jambe tendue devant toi, l'autre pliée, penche-toi doucement vers le pied, dos long.", "Mollet : un pas en avant, jambe arrière tendue, talon arrière au sol, main au mur si besoin.", "Avant de cuisse : debout, une main au mur, attrape le pied et rapproche le talon de la fesse, genoux l'un contre l'autre.", "Intérieur de cuisse : assis, plantes des pieds l'une contre l'autre, laisse les genoux descendre."],
     Tronc: ["Torsion allongée : sur le dos, genoux pliés, laisse tomber les genoux d'un côté, épaules au sol.", "Posture de l'enfant : à genoux, fesses vers les talons, bras tendus devant.", "Avant du tronc : sur le ventre, appuyé sur les avant-bras, soulève doucement la poitrine, sans douleur dans le bas du dos."],
-    Cardio: ["Mollet : un pas en avant, jambe arrière tendue, talon arrière au sol, main au mur si besoin.", "Avant de cuisse : debout ou sur le côté, attrape le pied et rapproche le talon de la fesse.", "Arrière de cuisse : allongé sur le dos, jambe levée tenue sous le genou."]
+    Cardio: ["Mollet : un pas en avant, jambe arrière tendue, talon arrière au sol, main au mur si besoin.", "Avant de cuisse : debout ou sur le côté, attrape le pied et rapproche le talon de la fesse.", "Arrière de cuisse : assis, une jambe tendue devant toi, l'autre pliée, penche-toi doucement vers le pied, dos long."]
   };
   function groupesSeance(liste, focus) {
     var g = [focus];
@@ -404,7 +404,40 @@
     }
     return out;
   }
-  function liHtml(tab) { return "<ul>" + tab.map(function (t) { return "<li>" + esc(t) + "</li>"; }).join("") + "</ul>"; }
+  var ILLU = [
+    ["Pompes lentes", "pompes", "Ketut Subiyanto", 4720291],
+    ["Flexions de jambes", "squat", null, 4384679],
+    ["Option avec ta corde", "corde", null, 0],
+    ["Triceps", "m-triceps", "Tima Miroshnichenko", 6388359],
+    ["Épaule", "m-epaule", "RDNE Stock project", 8401123],
+    ["Côté du buste", "m-cote", "Monstera Production", 6998459],
+    ["Intérieur de cuisse", "m-interieur", "Monstera Production", 6311694],
+    ["Posture de l'enfant", "m-enfant", "Klaus Nielsen", 6303722],
+    ["Avant du tronc", "m-sphinx", "Monstera Production", 5384552],
+    ["Chat-vache", "m-chatvache", "Vi Nguyen", 17572172],
+    ["Arrière de cuisse", "m-arriere", "RF._.studio", 3886098],
+    ["Avant de cuisse", "m-avant", "Ketut Subiyanto", 5038830]
+  ];
+  function illuDe(t) {
+    for (var i = 0; i < ILLU.length; i++) {
+      if (t.indexOf(ILLU[i][0]) === 0 && window.IMGS && window.IMGS[ILLU[i][1]]) {
+        var ph = window.PHOTOS && window.PHOTOS[ILLU[i][1]];
+        return { cle: ILLU[i][1], auteur: ILLU[i][2] || (ph && ph.auteur) || "", id: ILLU[i][3] || (ph && ph.pexels) || 0, nom: ILLU[i][0] };
+      }
+    }
+    return null;
+  }
+  function liHtml(tab, credits) {
+    return '<ul class="liste-illu">' + tab.map(function (t) {
+      var il = illuDe(t);
+      if (!il) return '<li class="sans-img"><span>' + esc(t) + "</span></li>";
+      if (credits && il.auteur && credits.indexOf(il.auteur) === -1) credits.push(il.auteur);
+      return '<li class="avec-img"><img src="' + window.IMGS[il.cle] + '" alt="' + esc(il.nom) + '" width="400" height="300" loading="lazy"><span>' + esc(t) + "</span></li>";
+    }).join("") + "</ul>";
+  }
+  function creditsHtml(c) {
+    return c.length ? '<p class="doux petit">Photos : ' + c.map(esc).join(", ") + ' / <a href="https://www.pexels.com/license/" target="_blank" rel="noopener">Pexels</a>. Les photos illustrent le mouvement ; suis le texte.</p>' : "";
+  }
   function blocEchauffement(p, groupes) {
     var mats = p.materiel || [];
     var charge = ["gilet", "disques", "halteres", "elastique"].some(function (m) { return mats.indexOf(m) !== -1; });
@@ -413,8 +446,8 @@
     h += "<h4>1. Monter en température (3 minutes)</h4>";
     var gen = ["Marche sur place puis en avant et en arrière, bras actifs : 1 minute.", "Montées de genoux légères : 1 minute.", "Talons-fesses légers : 1 minute."];
     if (mats.indexOf("corde") !== -1) gen.push("Option avec ta corde à sauter : sauts très tranquilles pendant 2 à 3 minutes à la place des trois points ci-dessus.");
-    h += liHtml(gen);
-    h += "<h4>2. Mobilité pour les muscles du jour (3 à 4 minutes)</h4>" + liHtml(choisir(ECH_MOUV, groupes, 5, /^(Talons-fesses|Montées de genoux|Marche)/));
+    var cr = []; h += liHtml(gen, cr);
+    h += "<h4>2. Mobilité pour les muscles du jour (3 à 4 minutes)</h4>" + liHtml(choisir(ECH_MOUV, groupes, 5, /^(Talons-fesses|Montées de genoux|Marche)/), cr) + creditsHtml(cr);
     if (charge) {
       h += "<h4>3. Séries de montée en charge</h4><p>Avant le premier exercice avec charge, fais 1 à 2 séries légères du même mouvement : 8 à 10 répétitions faciles, loin de l'échec.</p>";
     }
@@ -423,7 +456,7 @@
   function blocRetourCalme(groupes) {
     var h = '<details class="carte verre" id="retour-calme"><summary><strong>Retour au calme et étirements</strong> <span class="doux">(environ 6 à 8 minutes, après la séance)</span></summary>';
     h += "<h4>1. Redescendre (2 à 3 minutes)</h4><p>Marche lente et respiration calme, jusqu'à ce que le souffle et le cœur redescendent.</p>";
-    h += "<h4>2. Étirements maintenus : 15 à 20 secondes par côté</h4>" + liHtml(choisir(CALME_ETIR, groupes, 6));
+    h += "<h4>2. Étirements maintenus : 15 à 20 secondes par côté</h4>" + (function () { var cr = []; var l = liHtml(choisir(CALME_ETIR, groupes, 6), cr); return l + creditsHtml(cr); })();
     h += '<p class="doux">Va jusqu\'à une tension légère, jamais jusqu\'à la douleur. Respire normalement, ne rebondis pas, et fais les deux côtés.</p>';
     h += '<div class="alerte">Les étirements servent à se détendre et à garder de l\'amplitude. Les études ne montrent pas qu\'ils réduisent à coup sûr les courbatures ou les blessures. Arrête en cas de douleur ; si tu as une blessure ou un doute, demande l\'avis d\'un professionnel de santé. Repères : NHS, position du CSEP (Behm 2016), revue Cochrane (Herbert 2011).</div>';
     return h + "</details>";
