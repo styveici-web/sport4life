@@ -9,7 +9,7 @@ window.PHOTOS = {
   "tractions": { pexels: 9644821, auteur: "Ron Lach" },
   "rowing-halteres": { pexels: 29825221, auteur: "@marcuschanmedia | IG" },
   "curl-halteres": { pexels: 10152554, auteur: "Andrii Chepelovskyi" },
-  "squat": { pexels: 8032754, auteur: "MART PRODUCTION" },
+  "squat": { pexels: 4384679, auteur: "Yogendra Singh" },
   "squat-lestes": { pexels: 4164850, auteur: "Ivan S" },
   "fentes-bulgares": { pexels: 27898326, auteur: "Ferid Faiqoglu" },
   "pont-fessier": { pexels: 4534632, auteur: "Vlada Karpovich" },
