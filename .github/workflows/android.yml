@@ -106,8 +106,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete android-latest --yes --cleanup-tag || true
-          gh release create android-latest Sport4Life-debug.apk \
-            --title "Sport4Life Android (debug)" \
-            --notes "APK signé avec la clé Sport4Life (secret du dépôt), à installer sur Android. Build du ${GITHUB_SHA::7}." \
+          sha256sum Sport4Life-debug.apk
+          gh release delete android-candidate --yes --cleanup-tag || true
+          gh release create android-candidate Sport4Life-debug.apk \
+            --target "$GITHUB_SHA" \
+            --title "Sport4Life Android CANDIDAT v28 (debug, branche styveici-web-patch-1)" \
+            --notes "CANDIDAT de test, pas la version stable. APK signé avec la clé Sport4Life, s'installe par-dessus l'appli existante sans désinstaller. La version stable reste dans la release android-latest. Build du ${GITHUB_SHA::7}." \
             --prerelease
