@@ -77,3 +77,10 @@ details.carte[open] summary::after{content:"\2212"}
 details.carte h4{margin:14px 0 4px;font-size:.95rem}
 details.carte ul{margin:4px 0 8px;padding-left:20px}
 details.carte li{margin:4px 0}
+
+.liste-illu{list-style:none;margin:8px 0;padding:0;display:grid;gap:10px}
+.liste-illu li{display:flex;gap:12px;align-items:center}
+.liste-illu li.avec-img img{width:96px;height:72px;object-fit:cover;border-radius:14px;flex:none;display:block}
+.liste-illu li span{flex:1;min-width:0}
+.petit{font-size:.78rem}
+.carte .liste-illu{padding-left:0 !important;margin-left:0}
