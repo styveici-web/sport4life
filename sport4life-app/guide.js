@@ -406,5 +406,37 @@
     } finally { cfg.voix = voixVoulue; }
   }
 
-  window.S4Guide = { sources: sources, panel: panel, stop: arret, etat: function () { return etat; }, _cfg: cfg, _tenu: tenu };
+  // Réglages (préférences uniquement) : lecture pour l'export, application validée pour l'import.
+  function nombreEntre(v, a, b) { return typeof v === "number" && isFinite(v) && Math.floor(v) === v && v >= a && v <= b; }
+  function reglagesValides(o) {
+    if (!o || typeof o !== "object" || Array.isArray(o)) return null;
+    var n = {};
+    if ("voix" in o) { if (typeof o.voix !== "boolean") return null; n.voix = o.voix; }
+    if ("bip" in o) { if (typeof o.bip !== "boolean") return null; n.bip = o.bip; }
+    if ("auto" in o) { if (typeof o.auto !== "boolean") return null; n.auto = o.auto; }
+    if ("tempo" in o) { if (!nombreEntre(o.tempo, 1, 6)) return null; n.tempo = o.tempo; }
+    if ("repos" in o) { if (!nombreEntre(o.repos, 0, 600)) return null; n.repos = o.repos; }
+    if ("trans" in o) { if (!nombreEntre(o.trans, 5, 180)) return null; n.trans = o.trans; }
+    if ("p" in o) {
+      if (!o.p || typeof o.p !== "object" || Array.isArray(o.p)) return null;
+      n.p = {};
+      var bon = true;
+      Object.keys(o.p).forEach(function (id) {
+        if (id === "__proto__" || id === "constructor" || id === "prototype") return;
+        var q = o.p[id]; if (!q || typeof q !== "object" || Array.isArray(q)) { bon = false; return; }
+        var r = {};
+        if ("reps" in q) { if (!nombreEntre(q.reps, 1, 1000)) { bon = false; return; } r.reps = q.reps; }
+        if ("duree" in q) { if (!nombreEntre(q.duree, 1, 3600)) { bon = false; return; } r.duree = q.duree; }
+        n.p[id] = r;
+      });
+      if (!bon) return null;
+    }
+    return n;
+  }
+  window.S4Guide = { reglagesValides: reglagesValides, appliquerReglages: function (o) {
+    var n = reglagesValides(o); if (!n) return false;
+    var avant = JSON.stringify(cfg);
+    Object.keys(n).forEach(function (k) { cfg[k] = n[k]; });
+    try { localStorage.setItem(CLE, JSON.stringify(cfg)); return true; } catch (e) { var o = JSON.parse(avant); Object.keys(o).forEach(function (k) { cfg[k] = o[k]; }); return false; }
+  }, sources: sources, panel: panel, stop: arret, etat: function () { return etat; }, _cfg: cfg, _tenu: tenu };
 })();
