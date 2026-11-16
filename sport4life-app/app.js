@@ -136,7 +136,7 @@
   }
 
 
-  var V = "16";
+  var V = "17";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -531,7 +531,14 @@
   // ni dans l'export du profil. Les mesures ne sont pas enregistrées : elles restent en mémoire le temps de l'affichage.
   var GARMIN = "https://personal.connectapi.garmin.com", CLE_SECURE = "s4_garmin_cle";
   var montreJeton = null, montreEtat = { msg: "", data: null, charge: false };
-  function plug(nom) { try { return window.Capacitor && window.Capacitor.registerPlugin ? window.Capacitor.registerPlugin(nom) : null; } catch (e) { return null; } }
+  function plug(nom) {
+    try {
+      var C = window.Capacitor; if (!C) return null;
+      // Sans bundler, le pont natif expose les plugins dans Capacitor.Plugins (comme LocalNotifications).
+      if (C.Plugins && C.Plugins[nom]) return C.Plugins[nom];
+      return C.registerPlugin ? C.registerPlugin(nom) : null;
+    } catch (e) { return null; }
+  }
   function detailErr(e) {
     if (!e) return "inconnu";
     var c = e.code ? String(e.code) : "", m = e.errorMessage || e.message || (typeof e === "string" ? e : "");
@@ -555,7 +562,7 @@
   function sondeCoffre() {
     var s = plug("SecureStorage"), dispo = "?";
     try { dispo = window.Capacitor && window.Capacitor.isPluginAvailable ? String(window.Capacitor.isPluginAvailable("SecureStorage")) : "?"; } catch (e) {}
-    if (!s) return Promise.resolve("plugin " + dispo + ", proxy absent");
+    if (!s) return Promise.resolve("plugin " + dispo + ", proxy absent (Plugins:" + (window.Capacitor && window.Capacitor.Plugins ? Object.keys(window.Capacitor.Plugins).join(",").slice(0, 120) : "aucun") + ")");
     var K = "s4_sonde", etape = "ecriture";
     return s.internalSetItem({ prefixedKey: K, data: "test", sync: false }).then(function () {
       etape = "lecture"; return s.internalGetItem({ prefixedKey: K, sync: false });
@@ -614,9 +621,9 @@
       montreEtat.data = null;
       if (m === "pas-de-cle") montreEtat.msg = "Colle d'abord ta clé API Garmin ci-dessous.";
       else if (m === "coffre") montreEtat.msg = "Le stockage sécurisé Android n'est pas disponible : la clé n'est pas utilisée.";
-      else if (m === "http") montreEtat.msg = "La connexion native n'est pas disponible dans cette version.";
+      else if (m === "http") montreEtat.msg = "La connexion native n'est pas disponible dans cette version (plugin HTTP absent).";
       else if (/^jeton-(400|401|403)$/.test(m)) montreEtat.msg = "Garmin refuse la clé (invalide, supprimée ou expirée). Crée-en une nouvelle dans Garmin Connect puis remplace-la ici.";
-      else montreEtat.msg = "Connexion à Garmin impossible pour le moment (réseau ou service). Réessaie plus tard.";
+      else montreEtat.msg = "Connexion à Garmin impossible pour le moment (réseau ou service). Détail technique : " + detailErr(e) + ".";
     }).then(function () { montreEtat.charge = false; if (/^#\/montre/.test(location.hash)) vueMontre(); });
   }
   function nb(v, suf) { return (typeof v === "number" && isFinite(v)) ? Math.round(v) + (suf || "") : "—"; }
