@@ -93,6 +93,64 @@
     return { entretien: Math.round(entretien), cible: Math.round(entretien + 300), proteines: Math.round(1.6 * w) };
   }
 
+
+  // ---------- Séance aléatoire + repas ----------
+  function alea(tab) { return tab[Math.floor(Math.random() * tab.length)]; }
+  function melange(tab) {
+    var a = tab.slice();
+    for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+  function genererAleatoire(p) {
+    var ok = EXERCICES.filter(function (e) { return faisable(e, p); });
+    var exos = [];
+    melange(["Pousser", "Tirer", "Jambes", "Tronc"]).forEach(function (g) {
+      var c = ok.filter(function (e) { return e.groupe === g; });
+      if (c.length) exos.push(alea(c).id);
+    });
+    var cardio = ok.filter(function (e) { return e.groupe === "Cardio"; });
+    if (cardio.length) exos.push(alea(cardio).id);
+    var pdej = alea(REPAS.filter(function (r) { return r.moment === "Petit-déjeuner"; }));
+    var plats = melange(REPAS.filter(function (r) { return r.moment === "Repas"; }));
+    var coll = melange(REPAS.filter(function (r) { return r.moment === "Collation"; }));
+    var repas = [pdej, plats[0], plats[1], coll[0]];
+    var n = besoins(p);
+    var total = repas.reduce(function (a, r) { return a + r.kcal; }, 0);
+    if (n && n.cible - total > 250) repas.push(coll[1]);
+    return { date: aujourdhui(), exos: exos, repas: repas.map(function (r) { return r.id; }) };
+  }
+  function repasParId(id) {
+    for (var i = 0; i < REPAS.length; i++) if (REPAS[i].id === id) return REPAS[i];
+  }
+  function blocAleatoire(p, faits) {
+    var a = p.aleatoire && p.aleatoire.date === aujourdhui() ? p.aleatoire : null;
+    var h = '<div class="carte verre" id="alea"><h3>Séance aléatoire</h3>';
+    h += '<p class="doux">Un exercice par groupe musculaire, tiré au hasard dans ta bibliothèque selon ton matériel, avec des repas pour la prise de masse.</p>';
+    h += '<button data-alea="1">' + (a ? "Régénérer" : "Générer une séance aléatoire") + "</button>";
+    if (a) {
+      var exos = a.exos.map(exoParId).filter(Boolean);
+      var repas = a.repas.map(repasParId).filter(Boolean);
+      h += '<h3 style="margin-top:16px">Exercices (' + faits.filter(function (id) { return a.exos.indexOf(id) !== -1; }).length + "/" + exos.length + " validés)</h3>";
+      exos.forEach(function (e) {
+        var fait = faits.indexOf(e.id) !== -1;
+        h += '<div class="exo verre"><div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + '</div><div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + '</strong></a><div class="doux">' + esc(e.series) + '</div></div><button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
+      });
+      var kcal = 0, prot = 0;
+      h += '<h3 style="margin-top:16px">Repas de la journée</h3>';
+      repas.forEach(function (r) {
+        kcal += r.kcal; prot += r.prot;
+        h += '<div class="repas"><div class="ligne"><strong>' + esc(r.nom) + '</strong><span class="etiquette">' + esc(r.moment) + '</span></div><div class="doux">' + esc(r.detail) + '</div><div class="doux">≈ ' + r.kcal + " kcal · " + r.prot + " g de protéines</div></div>";
+      });
+      h += "<p><strong>Total : ≈ " + kcal + " kcal, " + prot + " g de protéines</strong>";
+      var n = besoins(p);
+      if (n) h += '<br><span class="doux">Objectif estimé : ' + n.cible + " kcal et " + n.proteines + " g de protéines.</span>";
+      else h += '<br><span class="doux">Renseigne ton profil pour comparer à ton objectif.</span>';
+      h += "</p>";
+      h += '<div class="alerte">Repas indicatifs, valeurs approximatives (ordre de grandeur, pas des mesures). Ajuste les quantités à ton appétit et à ton objectif. Pas un avis médical.</div>';
+    }
+    return h + "</div>";
+  }
+
   // ---------- Vues ----------
   function vueAujourdhui() {
     var p = profil(), s = seance(p), jour = aujourdhui();
@@ -101,6 +159,8 @@
     h += '<div class="carte verre"><p class="doux">' + esc(new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })) + "</p>";
     h += "<h3>Focus : " + esc(s.focus) + "</h3>";
     h += '<p class="doux">Exercices choisis selon ton matériel (' + p.materiel.length + " sélectionné" + (p.materiel.length > 1 ? "s" : "") + "). " + faits.length + "/" + s.liste.length + " validé" + (faits.length > 1 ? "s" : "") + ".</p></div>";
+    h += blocAleatoire(p, faits);
+    h += '<h3 style="margin:6px 4px 10px">Séance proposée</h3>';
     s.liste.forEach(function (e) {
       var fait = faits.indexOf(e.id) !== -1;
       h += '<div class="exo verre"><div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + '</div><div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div></div>" +
@@ -203,7 +263,10 @@
     var t = ev.target.closest("button");
     if (!t) return;
     var p = profil();
-    if (t.dataset.valider) {
+    if (t.dataset.alea) {
+      p.aleatoire = genererAleatoire(p); sauver(); vueAujourdhui();
+      var bloc = document.getElementById("alea"); if (bloc) bloc.scrollIntoView({ block: "start" });
+    } else if (t.dataset.valider) {
       var j = aujourdhui(); p.valides[j] = p.valides[j] || [];
       var i = p.valides[j].indexOf(t.dataset.valider);
       if (i === -1) p.valides[j].push(t.dataset.valider); else p.valides[j].splice(i, 1);
