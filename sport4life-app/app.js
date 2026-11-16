@@ -136,7 +136,7 @@
   }
 
 
-  var V = "20";
+  var V = "21";
   function vignette(e) {
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
@@ -346,11 +346,14 @@
     if (a) {
       var exos = a.exos.map(exoParId).filter(Boolean);
       var repas = a.repas.map(repasParId).filter(Boolean);
+      var gA = groupesSeance(exos, exos.length ? exos[0].groupe : "");
+      h += blocEchauffement(p, gA);
       h += '<h3 style="margin-top:16px">Exercices (' + faits.filter(function (id) { return a.exos.indexOf(id) !== -1; }).length + "/" + exos.length + " validés)</h3>";
       exos.forEach(function (e) {
         var fait = faits.indexOf(e.id) !== -1;
         h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + '</strong></a><div class="doux">' + esc(e.series) + "</div>" + infoSeries(p, e) + '</div><button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
       });
+      h += blocRetourCalme(gA);
       var kcal = 0, prot = 0;
       h += '<h3 style="margin-top:16px">Repas de la journée</h3>';
       repas.forEach(function (r) {
@@ -377,7 +380,7 @@
     Tirer: ["Cercles d'épaules : 10 vers l'avant, 10 vers l'arrière.", "Serrer les omoplates : bras le long du corps, rapproche les omoplates 2 secondes, 10 fois.", "Rotations du buste, bras croisés sur la poitrine : 8 de chaque côté.", "Chat-vache à quatre pattes : 8 allers-retours lents."],
     Jambes: ["Flexions de jambes au poids du corps, amplitude confortable : 10.", "Fentes marchées courtes : 6 par jambe.", "Balancements de jambe d'avant en arrière, une main sur un mur : 10 par jambe.", "Rotations de chevilles : 10 par pied, dans chaque sens."],
     Tronc: ["Rotations du buste debout, bras en croix : 10 par côté.", "Chat-vache à quatre pattes : 8 allers-retours lents.", "Bras et jambe opposés tendus à quatre pattes : 6 par côté, sans cambrer.", "Montées de genoux lentes : 20."],
-    Cardio: ["Marche rapide puis petit trot sur place : 2 minutes.", "Talons-fesses légers : 20.", "Montées de genoux : 20.", "Montées sur la pointe des pieds : 15."]
+    Cardio: ["Cercles de hanches, mains sur les hanches : 10 dans chaque sens.", "Flexions de jambes au poids du corps, amplitude confortable : 10.", "Montées sur la pointe des pieds : 15.", "Cercles d'épaules : 10 vers l'avant, 10 vers l'arrière."]
   };
   var CALME_ETIR = {
     Pousser: ["Pectoraux : pose la main et l'avant-bras sur un mur, coude à hauteur d'épaule, tourne doucement le buste de l'autre côté.", "Triceps : une main derrière la nuque, l'autre main guide le coude vers le haut.", "Épaule : bras tendu devant toi, ramène-le vers la poitrine avec l'autre bras."],
@@ -391,11 +394,12 @@
     liste.forEach(function (e) { if (g.indexOf(e.groupe) === -1) g.push(e.groupe); });
     return g.filter(function (x) { return ECH_MOUV[x]; });
   }
-  function choisir(table, groupes, max) {
+  function choisir(table, groupes, max, exclure) {
     var out = [], i = 0, ajoute = true;
+    var deja = function (x) { return out.indexOf(x) !== -1 || (exclure && exclure.test(x)); };
     while (out.length < max && ajoute) {
       ajoute = false;
-      groupes.forEach(function (g) { var t = table[g]; if (t && i < t.length && out.length < max) { out.push(t[i]); ajoute = true; } });
+      groupes.forEach(function (g) { var t = table[g]; if (t && i < t.length && out.length < max) { if (!deja(t[i])) out.push(t[i]); ajoute = true; } });
       i++;
     }
     return out;
@@ -403,20 +407,21 @@
   function liHtml(tab) { return "<ul>" + tab.map(function (t) { return "<li>" + esc(t) + "</li>"; }).join("") + "</ul>"; }
   function blocEchauffement(p, groupes) {
     var mats = p.materiel || [];
-    var h = '<details class="carte verre" id="echauffement"><summary><strong>Échauffement</strong> <span class="doux">(6 à 8 minutes, avant la séance)</span></summary>';
+    var charge = ["gilet", "disques", "halteres", "elastique"].some(function (m) { return mats.indexOf(m) !== -1; });
+    var h = '<details class="carte verre" id="echauffement"><summary><strong>Échauffement</strong> <span class="doux">(environ ' + (charge ? "8 à 10 minutes, séries légères comprises" : "6 à 7 minutes") + ", avant la séance)</span></summary>";
     h += '<p class="doux">Objectif : monter doucement le rythme cardiaque et préparer les articulations utilisées. Mouvements dynamiques, sans rester en étirement long.</p>';
     h += "<h4>1. Monter en température (3 minutes)</h4>";
-    var gen = ["Marche sur place puis en avant et en arrière, bras actifs : 1 minute.", "Montées de genoux légères : 30 secondes.", "Talons-fesses légers : 30 secondes."];
+    var gen = ["Marche sur place puis en avant et en arrière, bras actifs : 1 minute.", "Montées de genoux légères : 1 minute.", "Talons-fesses légers : 1 minute."];
     if (mats.indexOf("corde") !== -1) gen.push("Option avec ta corde à sauter : sauts très tranquilles pendant 2 à 3 minutes à la place des trois points ci-dessus.");
     h += liHtml(gen);
-    h += "<h4>2. Mobilité pour les muscles du jour (3 à 4 minutes)</h4>" + liHtml(choisir(ECH_MOUV, groupes, 5));
-    if (["gilet", "disques", "halteres", "elastique"].some(function (m) { return mats.indexOf(m) !== -1; })) {
+    h += "<h4>2. Mobilité pour les muscles du jour (3 à 4 minutes)</h4>" + liHtml(choisir(ECH_MOUV, groupes, 5, /^(Talons-fesses|Montées de genoux|Marche)/));
+    if (charge) {
       h += "<h4>3. Séries de montée en charge</h4><p>Avant le premier exercice avec charge, fais 1 à 2 séries légères du même mouvement : 8 à 10 répétitions faciles, loin de l'échec.</p>";
     }
     return h + "</details>";
   }
   function blocRetourCalme(groupes) {
-    var h = '<details class="carte verre" id="retour-calme"><summary><strong>Retour au calme et étirements</strong> <span class="doux">(5 à 8 minutes, après la séance)</span></summary>';
+    var h = '<details class="carte verre" id="retour-calme"><summary><strong>Retour au calme et étirements</strong> <span class="doux">(environ 6 à 8 minutes, après la séance)</span></summary>';
     h += "<h4>1. Redescendre (2 à 3 minutes)</h4><p>Marche lente et respiration calme, jusqu'à ce que le souffle et le cœur redescendent.</p>";
     h += "<h4>2. Étirements maintenus : 15 à 20 secondes par côté</h4>" + liHtml(choisir(CALME_ETIR, groupes, 6));
     h += '<p class="doux">Va jusqu\'à une tension légère, jamais jusqu\'à la douleur. Respire normalement, ne rebondis pas, et fais les deux côtés.</p>';
