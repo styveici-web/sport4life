@@ -1,0 +1,96 @@
+name: Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android.yml'
+      - 'android-app/**'
+      - 'sport4life-app/**'
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Copier le site dans www
+        working-directory: android-app
+        run: |
+          rm -rf www
+          mkdir www
+          cp -r ../sport4life-app/. www/
+          rm -f www/README.md www/CREDITS.md
+
+      - name: Installer les dépendances
+        working-directory: android-app
+        run: npm install
+
+      - name: Créer le projet Android
+        working-directory: android-app
+        run: npx cap add android
+
+      - name: Icône S4 (adaptative)
+        working-directory: android-app
+        run: |
+          mkdir -p assets
+          convert -size 1024x1024 xc:'#2563eb' assets/icon-background.png
+          convert -size 1024x1024 xc:none -fill white -font DejaVu-Sans-Bold -pointsize 400 -gravity center -annotate +0+0 'S4' assets/icon-foreground.png \
+            || convert -size 1024x1024 xc:none -fill white -pointsize 400 -gravity center -annotate +0+0 'S4' assets/icon-foreground.png
+          convert assets/icon-background.png assets/icon-foreground.png -composite assets/icon-only.png
+          npx capacitor-assets generate --android --iconBackgroundColor '#2563eb' --iconBackgroundColorDark '#2563eb'
+
+      - name: Icône de notification et permissions
+        working-directory: android-app
+        run: |
+          mkdir -p android/app/src/main/res/drawable
+          cat > android/app/src/main/res/drawable/ic_stat_s4.xml <<'XML'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+            <path android:fillColor="#FFFFFF" android:pathData="M3,10h2v4H3zM5,8h2v8H5zM7,11h10v2H7zM17,8h2v8h-2zM19,10h2v4h-2z"/>
+          </vector>
+          XML
+          M=android/app/src/main/AndroidManifest.xml
+          grep -q POST_NOTIFICATIONS "$M" || sed -i 's#<application#<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application#' "$M"
+          cat "$M"
+
+      - name: Construire l'APK debug
+        working-directory: android-app/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Permissions de l'APK
+        run: |
+          APK=android-app/android/app/build/outputs/apk/debug/app-debug.apk
+          cp "$APK" Sport4Life-debug.apk
+          AAPT=$(ls $ANDROID_HOME/build-tools/*/aapt | tail -1)
+          "$AAPT" dump permissions Sport4Life-debug.apk | tee permissions.txt
+          ls -la Sport4Life-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sport4Life-debug-apk
+          path: Sport4Life-debug.apk
+
+      - name: Publier la release android-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest Sport4Life-debug.apk \
+            --title "Sport4Life Android (debug)" \
+            --notes "APK debug signé avec la clé debug, à installer sur Android. Build du ${GITHUB_SHA::7}." \
+            --prerelease
