@@ -6,8 +6,10 @@ Web app statique de suivi sportif et nutritionnel pour la prise de masse. HTML, 
 - Bibliothèque de 50 exercices avec filtre par matériel (16 types de matériel)
 - Mode « Composer ma séance » : chacun choisit ses exercices du jour, la séance guidée les enchaîne
 - Séance aléatoire et séance guidée avec voix, minuteur, échauffement et étirements
+- Repas suggérés (45 repas) calculés à partir de leurs ingrédients, filtrés par les préférences alimentaires du profil (exclusions, régimes végétarien/végétalien/pescétarien, goûts)
 - Profils locaux (localStorage), sans compte ; chaque téléphone garde ses propres profils
 - Style Liquid Glass en CSS
 
 Les données restent dans le navigateur. Conseils généraux, pas un avis médical.
+Les exclusions alimentaires filtrent des suggestions indicatives d'après les ingrédients listés : ce n'est pas une garantie contre les allergies (traces, produits transformés et sauces non listés ne sont pas couverts). Valeurs nutritionnelles approximatives, d'après la table CIQUAL (ANSES).
 Chaque fiche exercice affiche le schéma des muscles travaillés (voir CREDITS.md).

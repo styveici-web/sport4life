@@ -108,9 +108,9 @@ jobs:
         run: |
           sha256sum Sport4Life-debug.apk
           VC=$((100 + GITHUB_RUN_NUMBER))
-          TAG="android-candidate-v32-vc${VC}"
+          TAG="android-candidate-v33-vc${VC}"
           gh release create "$TAG" Sport4Life-debug.apk \
             --target "$GITHUB_SHA" \
-            --title "Sport4Life Android CANDIDAT v32 vc${VC} (debug, branche ${GITHUB_REF_NAME})" \
-            --notes "CANDIDAT de test v32, pas la version stable. APK signé avec la clé Sport4Life, s'installe par-dessus l'appli existante sans désinstaller. Les releases android-latest et android-candidate ne sont pas modifiées. Build du ${GITHUB_SHA::7}." \
+            --title "Sport4Life Android CANDIDAT v33 vc${VC} (debug, branche ${GITHUB_REF_NAME})" \
+            --notes "CANDIDAT de test v33, pas la version stable. APK signé avec la clé Sport4Life, s'installe par-dessus l'appli existante sans désinstaller. Les releases android-latest et android-candidate ne sont pas modifiées. Build du ${GITHUB_SHA::7}." \
             --prerelease --latest=false

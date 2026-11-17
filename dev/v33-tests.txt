@@ -1,0 +1,187 @@
+# Sport4Life v33 - tests des préférences alimentaires (exclusions, goûts, repas calculés). Aucun secret, aucune donnée perso.
+# Même principe que dev/v31-tests.txt : copier sport4life-app dans <R>/site, copier index.html dans <R>/index.html,
+# puis générer les pages _r_*.html et les lancer dans Chrome headless (temps virtuel).
+# Usage (R = dossier de travail, ex. /tmp/rec) :
+#   python3 mkrepas.py <R>           -> écrit <R>/site/_r_R1.html ... _r_R11.html (R1 R2 R2b R2c R3 R3b R4 R6 R7 R8 R9 R9b R10 R11)
+#   sh runr.sh <R> R1 R2 ...          -> affiche OK / ECHEC pour chaque vérification
+# Les suites v28 (A-I, T1), v31 (S1-S9) et v32 (C1-C8) restent à lancer telles quelles (zéro régression).
+# ===== mkrepas.py
+import json,sys
+R=sys.argv[1] if len(sys.argv)>1 else '/tmp/rec'
+idx=open(R+'/index.html').read()
+PRE=r'''<script>
+window.Capacitor={Plugins:{LocalNotifications:{schedule:function(){return Promise.resolve()},requestPermissions:function(){return Promise.resolve({display:"granted"})},checkPermissions:function(){return Promise.resolve({display:"granted"})},cancel:function(){return Promise.resolve()},createChannel:function(){return Promise.resolve()}}}};
+window.LOGS=[];function L(k,v){LOGS.push(k+": "+(v===true?"OK":v===false?"ECHEC":v));}
+function ok(k,c){L(k,!!c);}
+window.CONF=true;window.confirm=function(m){window.LASTCONF=m;return window.CONF};window.alert=function(){};
+function LS(k){return localStorage.getItem(k);}
+function PROF(i){return JSON.parse(LS("sport4life.v1")).profils[i||0];}
+function same(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+function fin(){document.documentElement.setAttribute("data-log",LOGS.join(" || "));}
+function R_(id){return REPAS.filter(function(r){return r.id===id})[0];}
+function tagsDe(ids){var t=[];ids.forEach(function(id){R_(id).tags.forEach(function(x){if(t.indexOf(x)===-1)t.push(x)})});return t;}
+function profilAvec(exclus,aimes,pas){return {id:"pX",nom:"X",taille:"180",poids:"75",age:"30",sexe:"h",activite:"1.55",materiel:["corps"],alimentation:{regime:"",exclus:exclus||[],aimes:aimes||[],pasAimes:pas||[]}};}
+function compte(ids){var c={pd:0,pl:0,co:0};ids.forEach(function(id){var m=R_(id).moment;if(m==="Petit-déjeuner")c.pd++;else if(m==="Repas")c.pl++;else c.co++;});return c;}
+function cocher(sel,val){var c=document.querySelector(sel);if(c.type==="checkbox"){c.checked=val;}else{c.value=val;}c.dispatchEvent(new Event("change",{bubbles:true}));}
+function seed(profils,extra){localStorage.clear();localStorage.setItem("sport4life.v1",JSON.stringify({actif:profils.length?profils[0].id:null,profils:profils}));Object.keys(extra||{}).forEach(function(k){localStorage.setItem(k,JSON.stringify(extra[k]))});}
+async function importer(txt){location.hash="#/profil";await sleep(150);var z=document.getElementById("zone-transfert");z.value=typeof txt==="string"?txt:JSON.stringify(txt);document.querySelector("[data-import]").click();await sleep(150);return (document.getElementById("transfert-msg")||{}).textContent||"";}
+</script>'''
+def jour():
+    return 'new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)'
+# Profil tel qu'enregistré par la v32 (lieu, autre, journal, validations, séances, repas du jour), sans "alimentation".
+V32={"id":"p1","nom":"Profil v32","taille":"178","poids":"72","age":"34","sexe":"h","activite":"1.55","note":"","migre3":True,"lieu":"maison",
+     "materiel":["corps","autre","banc","barre","kettlebell"],"journal":{"2026-11-10":{"pompes":[{"r":12,"k":0}]}},"valides":{"2026-11-10":["pompes","squat"]},
+     "poidsLog":[{"date":"2026-11-10","kg":72}],"perso":{"date":"2026-11-10","exos":["pompes","squat"]},"aleatoire":{"date":"2026-11-10","exos":["pompes"],"repas":["p1","d1","c1"]},
+     "repasJour":{"date":"2026-11-10","repas":["p2","d3","c2"]}}
+def build(name,seedjs,body):
+    h=idx.replace('<script src="data/exercises.js',PRE+'<script>'+seedjs+'</script>\n<script src="data/exercises.js',1)
+    h=h.replace('</body>','<script>window.addEventListener("load",async function(){try{await sleep(300);'+body+'}catch(e){L("EXCEPTION",String(e&&e.stack||e))}fin();});</script></body>')
+    open(R+'/site/_r_%s.html'%name,'w').write(h)
+NEUTRE='seed([{"id":"p1","nom":"Fixture R","taille":"180","poids":"75","age":"30","sexe":"h","activite":"1.55","materiel":["corps"],"journal":{},"valides":{},"poidsLog":[]}]);'
+# R1 migration d'un profil v32 : rien de perdu, alimentation neutre ajoutée
+build('R1','seed([%s]);'%json.dumps(V32),'''
+var avant=%s;location.hash="#/repas";await sleep(250);var p=PROF();
+ok("R1 alimentation neutre ajoutee et enregistree",same(p.alimentation,{regime:"",exclus:[],aimes:[],pasAimes:[]})&&p.migre33===true);
+var perdu=Object.keys(avant).filter(function(k){return k!=="repasJour"&&!same(avant[k],p[k])});
+ok("R1 aucun champ v32 modifie, hors repas du jour d'une date passee ("+(perdu.join(",")||"aucun")+")",perdu.length===0);
+ok("R1 materiel 'autre', lieu, seances, journal, validations conserves",p.materiel.indexOf("autre")!==-1&&p.lieu==="maison"&&same(p.perso,avant.perso)&&same(p.journal,avant.journal)&&same(p.valides,avant.valides)&&same(p.aleatoire,avant.aleatoire));
+ok("R1 onglet Repas: tous les repas proposes (comportement d'avant)",/Aucune préférence alimentaire/.test(document.body.innerText)&&!/masqu/.test(document.body.innerText)&&document.querySelectorAll(".repas").length>=REPAS.length);
+'''%json.dumps(V32))
+# R2 export / import : alimentation incluse et restaurée
+ALI={"regime":"vegetarien","exclus":["viande","poisson","crustaces","mollusques","sesame"],"aimes":["tofu","quinoa"],"pasAimes":["houmous"]}
+P2=dict(V32,alimentation=ALI); P2.pop("aleatoire"); P2.pop("repasJour")
+build('R2','seed([%s]);'%json.dumps(P2),'''
+var ALI=%s;
+location.hash="#/profil";await sleep(200);document.querySelector("[data-export]").click();await sleep(100);
+var txt=document.getElementById("zone-transfert").value,o=JSON.parse(txt);
+ok("R2 export contient l'alimentation",same(o.profils[0].alimentation,ALI));
+''' % json.dumps(ALI))
+# R2c : import dans un appareil vide (rien en mémoire ni en stockage)
+build('R2c','localStorage.clear();','''
+var ALI=%s;var m=await importer({profils:[%s]});L("R2c msg",m);
+ok("R2c import dans un appareil vide: alimentation restauree",same(PROF().alimentation,ALI));
+''' % (json.dumps(ALI), json.dumps(P2)))
+# R2b : fusion dans un profil existant
+build('R2b','seed([%s]);'%json.dumps(dict(P2,alimentation={"regime":"","exclus":[],"aimes":[],"pasAimes":[]})),'''
+var ALI=%s,imp={profils:[%s]};
+var m=await importer(imp);L("R2b msg",m);
+ok("R2b profil existant aux preferences vides: alimentation importee",same(PROF().alimentation,ALI));
+var imp2={profils:[JSON.parse(JSON.stringify(imp.profils[0]))]};imp2.profils[0].alimentation={regime:"",exclus:["gluten"],aimes:[],pasAimes:[]};
+var m2=await importer(imp2);L("R2b msg2",m2);
+ok("R2b preferences locales jamais remplacees (difference signalee, local garde)",same(PROF().alimentation,ALI)&&/données actuelles sont gardées/.test(m2));
+var bad={profils:[{id:"pZ",nom:"Z",materiel:["corps"],alimentation:{regime:"halal",exclus:["gluten","__proto__","inconnu",3],aimes:["tofu","xx"],pasAimes:["tofu","miel"]}}]};
+await importer(bad);var z=JSON.parse(LS("sport4life.v1")).profils.filter(function(q){return q.id==="pZ"})[0];
+ok("R2b import mal forme: codes et ingredients inconnus ecartes, pas de regime inconnu",z&&same(z.alimentation,{regime:"",exclus:["gluten"],aimes:["tofu"],pasAimes:["miel"]}));
+''' % (json.dumps(ALI), json.dumps(P2)))
+# R3 pour CHAQUE catégorie d'exclusion : 600 tirages sans le tag ; R3b raccourcis de régime
+build('R3',NEUTRE,'''
+var codes=ALIM_EXCLUSIONS.map(function(x){return x.code});ok("R3 17 categories d'exclusion",codes.length===17);
+codes.forEach(function(c){
+  var p=profilAvec([c]),mauvais=0,vides=0,porteurs=REPAS.filter(function(r){return r.tags.indexOf(c)!==-1}).length;
+  for(var i=0;i<600;i++){var ids=S4Repas.generer(p);if(!ids.length)vides++;if(tagsDe(ids).indexOf(c)!==-1)mauvais++;}
+  ok("R3 exclusion "+c+" ("+porteurs+" repas portent le tag): 600 tirages, 0 repas exclu, jamais vide",mauvais===0&&vides===0&&porteurs>0);
+});
+''')
+build('R3b',NEUTRE,'''
+ALIM_REGIMES.forEach(function(rg){
+  var p=profilAvec(rg.exclus),mauvais=0;
+  for(var i=0;i<600;i++){var t=tagsDe(S4Repas.generer(p));if(rg.exclus.some(function(c){return t.indexOf(c)!==-1}))mauvais++;}
+  ok("R3b "+rg.nom+": 600 tirages sans aucun repas exclu",mauvais===0);
+});
+var tous=["porc","viande","poisson","crustaces","mollusques","oeufs","lait","lactose","gluten","arachide","fruits_coque","soja","sesame","celeri","moutarde","sulfites","miel"];
+ok("R3b raccourcis: vegetarien, vegetalien, pescetarien seulement (aucun regime religieux)",same(ALIM_REGIMES.map(function(r){return r.id}),["vegetarien","vegetalien","pescetarien"])&&same(ALIM_EXCLUSIONS.map(function(x){return x.code}),tous));
+''')
+# R4 poisson / crustacés / mollusques indépendants ; R5 lactose ≠ lait
+build('R4',NEUTRE,'''
+function compat(ex){return S4Repas.compatibles(profilAvec(ex));}
+var P=compat(["poisson"]),C=compat(["crustaces"]),M=compat(["mollusques"]);
+ok("R4 sans poisson: crevettes et moules/calamars restent",P.indexOf("d8")!==-1&&P.indexOf("d9")!==-1&&P.indexOf("d10")!==-1&&P.indexOf("d2")===-1&&P.indexOf("d5")===-1);
+ok("R4 sans crustaces: poisson et mollusques restent",C.indexOf("d8")===-1&&C.indexOf("d2")!==-1&&C.indexOf("d9")!==-1);
+ok("R4 sans mollusques: poisson et crustaces restent",M.indexOf("d9")===-1&&M.indexOf("d10")===-1&&M.indexOf("d2")!==-1&&M.indexOf("d8")!==-1);
+ok("R4 aucun ingredient ne melange ces trois tags",ALIMENTS.every(function(a){return a.tags.filter(function(t){return ["poisson","crustaces","mollusques"].indexOf(t)!==-1}).length<=1}));
+var La=compat(["lactose"]),Lt=compat(["lait"]);
+ok("R5 sans lactose: fromages affines, feta, mozzarella, beurre et lait sans lactose restent",["c8","d18","d20","d9","p10"].every(function(id){return La.indexOf(id)!==-1})&&["p1","p3","c1","c3","p7"].every(function(id){return La.indexOf(id)===-1}));
+ok("R5 sans lait: aucun produit laitier (y compris sans lactose, fromage, beurre)",["c8","d18","d20","d9","p10","p1","c3"].every(function(id){return Lt.indexOf(id)===-1}));
+ok("R5 tout ingredient 'lactose' porte aussi 'lait'",ALIMENTS.every(function(a){return a.tags.indexOf("lactose")===-1||a.tags.indexOf("lait")!==-1}));
+''')
+# R6 cohérence des kcal calculées pour les 12 repas d'origine
+build('R6',NEUTRE,'''
+var A={};ALIMENTS.forEach(function(a){A[a.id]=a});
+ok("R6 kcal, proteines et tags recalcules depuis les ingredients pour les 45 repas",REPAS.every(function(r){var k=0,p=0,t=[];r.ingr.forEach(function(x){k+=A[x.id].kcal*x.g/100;p+=A[x.id].prot*x.g/100;A[x.id].tags.forEach(function(g){if(t.indexOf(g)===-1)t.push(g)})});return r.kcal===Math.round(k/10)*10&&r.prot===Math.round(p)&&same(r.tags,t.sort())}));
+var OLD={p1:["Porridge banane",620],p2:["Omelette et pain complet",560],p3:["Fromage blanc, muesli et amandes",520],d1:["Poulet, riz et brocolis",650],d2:["Saumon, patate douce et haricots verts",650],d3:["Pâtes complètes au bœuf",650],d4:["Lentilles et œufs",600],d5:["Thon, quinoa et légumes grillés",570],d6:["Dinde et pommes de terre",560],c1:["Yaourt grec, miel et noix",300],c2:["Tartines de beurre de cacahuète",480],c3:["Skyr et fruits",230]};
+// Écarts > 10 % documentés (anciennes valeurs écrites à la main, surtout surestimées) : voir le rapport v33.
+var DOC={p1:1,p2:1,p3:1,d2:1,d3:1,d4:1,d6:1,c1:1,c3:1};
+var lignes=[],nonDoc=[];
+Object.keys(OLD).forEach(function(id){var r=R_(id),e=Math.round((r.kcal-OLD[id][1])/OLD[id][1]*1000)/10;lignes.push(id+" "+OLD[id][1]+"->"+r.kcal+" ("+e+"%)");if(Math.abs(e)>10&&!DOC[id])nonDoc.push(id);if(Math.abs(e)<=10&&DOC[id])nonDoc.push(id+" (doc. a retirer)");});
+L("R6 ecarts",lignes.join(" ; "));
+ok("R6 12 repas d'origine: memes id et noms",Object.keys(OLD).every(function(id){return R_(id)&&R_(id).nom===OLD[id][0]}));
+ok("R6 tout ecart > 10 % est documente",nonDoc.length===0);
+''')
+# R7 minimum de repas par régime
+build('R7',NEUTRE,'''
+var REG={"vegetarien":["viande","poisson","crustaces","mollusques"],"vegetalien":["viande","poisson","crustaces","mollusques","oeufs","lait","miel"],"pescetarien":["viande"],"sans gluten":["gluten"],"sans lactose":["lactose"],"sans lait":["lait"],"sans oeufs":["oeufs"],"sans arachide ni fruits a coque":["arachide","fruits_coque"]};
+Object.keys(REG).forEach(function(k){var c=compte(S4Repas.compatibles(profilAvec(REG[k])));ok("R7 "+k+": "+c.pd+" pdj / "+c.pl+" repas / "+c.co+" collations (min 2/3/2)",c.pd>=2&&c.pl>=3&&c.co>=2);});
+var c=compte(REPAS.map(function(r){return r.id}));L("R7 total par moment",c.pd+" / "+c.pl+" / "+c.co);ok("R7 36 a 45 repas",REPAS.length>=36&&REPAS.length<=45);
+''')
+# R8 trop d'exclusions : message explicite, aucun repas exclu servi, rien d'exclu dans Tous les repas
+TROP=["viande","poisson","crustaces","mollusques","oeufs","lait","gluten","soja","arachide","fruits_coque","sesame","sulfites"]
+build('R8','seed([{"id":"p1","nom":"R8","taille":"190","poids":"90","age":"25","sexe":"h","activite":"1.725","materiel":["corps"],"journal":{},"valides":{},"poidsLog":[],"alimentation":{"regime":"","exclus":%s,"aimes":[],"pasAimes":[]}}]);'%json.dumps(TROP),'''
+var EX=%s;location.hash="#/repas";await sleep(300);var t=document.body.innerText;
+ok("R8 message d'insuffisance affiche",/Pas assez de repas compatibles avec tes exclusions : \\d+ repas disponibles?/.test(t)&&/Cible d'environ \\d+ kcal non atteinte/.test(t)&&/Aucun repas exclu n'est ajouté/.test(t));
+var ids=PROF().repasJour.repas;ok("R8 repas du jour: aucun repas exclu ("+ids.join(",")+")",ids.length>0&&!tagsDe(ids).some(function(x){return EX.indexOf(x)!==-1}));
+var noms=[].map.call(document.querySelectorAll(".repas strong"),function(s){return s.textContent});
+var interdits=REPAS.filter(function(r){return r.tags.some(function(x){return EX.indexOf(x)!==-1})}).map(function(r){return r.nom});
+ok("R8 aucun repas exclu affiche (repas du jour et Tous les repas)",noms.length>0&&!noms.some(function(n){return interdits.indexOf(n)!==-1}));
+ok("R8 masques annonces et texte de limites affiche",/masqués par tes exclusions/.test(t)&&/Ce n'est pas une garantie contre les allergies/.test(t));
+document.querySelector("[data-repas-regen]").click();await sleep(200);ok("R8 Autres repas: toujours aucun repas exclu",!tagsDe(PROF().repasJour.repas).some(function(x){return EX.indexOf(x)!==-1}));
+location.hash="#/aujourdhui";await sleep(200);document.querySelector("[data-alea]").click();await sleep(300);
+ok("R8 seance aleatoire: aucun repas exclu",!tagsDe(PROF().aleatoire.repas).some(function(x){return EX.indexOf(x)!==-1})&&/Pas assez de repas compatibles/.test(document.getElementById("alea").innerText));
+''' % json.dumps(TROP))
+# R9 invalidation des repas déjà tirés quand les préférences changent
+build('R9','var J=%s;seed([{"id":"p1","nom":"R9","taille":"180","poids":"75","age":"30","sexe":"h","activite":"1.55","materiel":["corps"],"journal":{},"valides":{},"poidsLog":[],"repasJour":{"date":J,"repas":["p8","d1","d3","c1"]},"aleatoire":{"date":J,"exos":["pompes"],"repas":["p8","d7","c8"]}}]);'%jour(),'''
+location.hash="#/profil";await sleep(250);
+cocher('[data-alim-ex="viande"]',true);await sleep(150);var p=PROF();
+ok("R9 repas du jour invalide au changement",p.repasJour===null||!tagsDe(p.repasJour.repas).some(function(x){return x==="viande"}));
+ok("R9 repas de la seance aleatoire retires/remplaces, exercices gardes",same(p.aleatoire.exos,["pompes"])&&!tagsDe(p.aleatoire.repas).some(function(x){return x==="viande"}));
+location.hash="#/repas";await sleep(250);var noms=[].map.call(document.querySelectorAll(".repas strong"),function(s){return s.textContent}).join("|");
+ok("R9 onglet Repas: plus aucun repas avec viande",!/Poulet|bœuf|porc|jambon|Dinde/i.test(noms)&&/Filtre actif, sans : Viande/.test(document.body.innerText));
+''')
+build('R9b','var J=%s;seed([{"id":"p1","nom":"R9b","taille":"180","poids":"75","age":"30","sexe":"h","activite":"1.55","materiel":["corps"],"journal":{},"valides":{},"poidsLog":[],"alimentation":{"regime":"","exclus":["poisson"],"aimes":[],"pasAimes":[]},"repasJour":{"date":J,"repas":["p1","d2","c11"]},"aleatoire":{"date":J,"exos":["squat"],"repas":["p1","d2","c11"]}}]);'%jour(),'''
+location.hash="#/repas";await sleep(300);var ids=PROF().aleatoire.repas;
+ok("R9b repas deja tires puis exclus: remplaces a l'affichage",!tagsDe(ids).some(function(x){return x==="poisson"})&&!/Saumon|Thon/.test([].map.call(document.querySelectorAll(".repas strong"),function(s){return s.textContent}).slice(0,6).join("|")));
+location.hash="#/aujourdhui";await sleep(250);ok("R9b seance aleatoire: aucun repas avec poisson",!/Saumon|Thon/.test((document.getElementById("alea")||{}).innerText||"")&&same(PROF().aleatoire.exos,["squat"]));
+''')
+# R10 interface du profil : libellés, aide lactose, raccourci, compteur en direct, goûts exclusifs, limites
+build('R10',NEUTRE,'''
+location.hash="#/profil";await sleep(250);var s=document.getElementById("alimentation"),t=s.innerText;
+ok("R10 section Alimentation avec 17 cases etiquetees",document.querySelectorAll("[data-alim-ex]").length===17&&[].every.call(document.querySelectorAll("[data-alim-ex]"),function(c){return c.closest("label")&&c.closest("label").textContent.trim().length>3}));
+ok("R10 cases groupees (fieldset + legend)",s.querySelectorAll("fieldset legend").length>=2);
+ok("R10 aide lactose: ne convient pas a une allergie au lait",/Ne convient pas à une allergie au lait/.test(t)&&document.querySelector('[data-alim-ex="lactose"]').getAttribute("aria-describedby")==="aide-lactose");
+ok("R10 texte de limites present dans la section",/Ce n'est pas une garantie contre les allergies : traces, produits transformés et sauces non listés ne sont pas couverts\\. Vérifie toujours les étiquettes\\. Valeurs nutritionnelles approximatives \\(d'après CIQUAL\\), pas un avis médical ni diététique\\./.test(t));
+ok("R10 jamais presentee comme sure pour les allergies",!/sans risque|garanti sans|sûr pour les allerg|adapté aux allergiques/i.test(document.body.innerText));
+var c0=document.getElementById("alim-compte").textContent;ok("R10 compteur initial",/^45 repas compatibles sur 45/.test(c0));
+cocher("#alim-regime","vegetalien");await sleep(100);var p=PROF();
+ok("R10 raccourci vegetalien coche viande, poisson, crustaces, mollusques, oeufs, lait, miel",same(p.alimentation.exclus.slice().sort(),["crustaces","lait","miel","mollusques","oeufs","poisson","viande"])&&document.querySelector('[data-alim-ex="miel"]').checked);
+var c1=document.getElementById("alim-compte").textContent;ok("R10 compteur mis a jour en direct ("+c1+")",c1!==c0&&/^14 repas compatibles/.test(c1));
+cocher('[data-alim-ex="miel"]',false);await sleep(100);p=PROF();
+ok("R10 decocher une case: modifiable, raccourci retire",p.alimentation.exclus.indexOf("miel")===-1&&p.alimentation.regime===""&&document.getElementById("alim-regime").value==="");
+cocher('[data-alim-aime="tofu"]',true);await sleep(50);cocher('[data-alim-pas="tofu"]',true);await sleep(100);p=PROF();
+ok("R10 gout: aime et pas aime exclusifs",p.alimentation.pasAimes.indexOf("tofu")!==-1&&p.alimentation.aimes.indexOf("tofu")===-1&&!document.querySelector('[data-alim-aime="tofu"]').checked);
+document.getElementById("nom").value="Nom pas encore enregistre";cocher('[data-alim-ex="soja"]',true);await sleep(100);
+ok("R10 changer une case ne perd pas la saisie en cours du formulaire",document.getElementById("nom").value==="Nom pas encore enregistre");
+ok("R10 cibles tactiles >= 44 px",[].every.call(document.querySelectorAll(".alim-case"),function(l){return l.getBoundingClientRect().height>=44}));
+location.hash="#/repas";await sleep(250);t=document.body.innerText;
+ok("R10 rappel du filtre actif sous l'onglet Repas",/Filtre actif, sans :/.test(t)&&/Soja/.test(t)&&/Ce n'est pas une garantie contre les allergies/.test(t));
+''')
+# R11 goûts : aimés plus souvent, pas aimés moins souvent mais jamais bloqués
+build('R11',NEUTRE,'''
+function freq(p,id){var n=0;for(var i=0;i<600;i++)if(S4Repas.generer(p).indexOf(id)!==-1)n++;return n;}
+var base=freq(profilAvec([]),"d2"),plus=freq(profilAvec([],["saumon","patate-douce"]),"d2"),moins=freq(profilAvec([],[],["saumon"]),"d2");
+L("R11 frequences d2 (saumon) sur 600",base+" neutre / "+plus+" aime / "+moins+" pas aime");
+ok("R11 aime: tire plus souvent",plus>base);ok("R11 pas aime: tire moins souvent",moins<base);
+var m3=0;for(var k=0;k<5;k++)m3+=freq(profilAvec([],[],["saumon"]),"d2");
+ok("R11 pas aime: jamais bloque ("+m3+" fois sur 3000)",m3>0);
+''')
+# ===== runr.sh
+# R=$1; shift; for n in "$@"; do echo "== $n"; google-chrome --headless=new --no-sandbox --disable-gpu --window-size=360,640 --virtual-time-budget=150000 --dump-dom file://$R/site/_r_$n.html 2>/dev/null | grep -o 'data-log="[^"]*"' | sed 's/ || /\n  /g;s/data-log="/  /;s/"$//'; done

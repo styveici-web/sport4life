@@ -53,8 +53,33 @@
     if (p.materiel.indexOf("autre") !== -1) {
       ["banc", "barre"].forEach(function (m) { if (p.materiel.indexOf(m) === -1) p.materiel.push(m); });
     }
+    // v33 : préférences alimentaires. Valeur neutre par défaut (aucune exclusion, aucun goût) = comportement d'avant.
+    if (!p.migre33) p.migre33 = true;
+    p.alimentation = alimValide(p.alimentation) || alimVide();
     return p;
   }
+
+  // ---------- Préférences alimentaires (v33) ----------
+  // p.alimentation = { regime: "" | id de raccourci, exclus: [codes], aimes: [ids d'ingrédients], pasAimes: [ids] }.
+  // Les exclusions retirent toujours les repas concernés ; les goûts ne font que changer la probabilité de tirage.
+  function alimCodes() { return (window.ALIM_EXCLUSIONS || []).map(function (x) { return x.code; }); }
+  function alimIds() { return (window.ALIMENTS || []).map(function (x) { return x.id; }); }
+  function alimRegime(id) { return (window.ALIM_REGIMES || []).filter(function (r) { return r.id === id; })[0] || null; }
+  function alimVide() { return { regime: "", exclus: [], aimes: [], pasAimes: [] }; }
+  function listePropre(l, ok) {
+    var out = [];
+    (Array.isArray(l) ? l : []).forEach(function (x) { if (typeof x === "string" && ok.indexOf(x) !== -1 && out.indexOf(x) === -1) out.push(x); });
+    return out;
+  }
+  // Validation (chargement, import) : codes et ingrédients inconnus écartés, doublons retirés.
+  function alimValide(o) {
+    if (!o || typeof o !== "object" || Array.isArray(o)) return null;
+    var n = { regime: typeof o.regime === "string" && alimRegime(o.regime) ? o.regime : "", exclus: listePropre(o.exclus, alimCodes()), aimes: listePropre(o.aimes, alimIds()), pasAimes: listePropre(o.pasAimes, alimIds()) };
+    n.pasAimes = n.pasAimes.filter(function (x) { return n.aimes.indexOf(x) === -1; });
+    return n;
+  }
+  function alimNeutre(o) { return !o || !(o.regime || o.exclus.length || o.aimes.length || o.pasAimes.length); }
+  function alim(p) { return p && p.alimentation ? p.alimentation : alimVide(); }
   var alerteDonnees = false;
   function sauvegarderBrut(brut) {
     try {
@@ -142,6 +167,15 @@
       if (!ex) { r.ajouts++; if (appliquer) loc.poidsLog.push({ date: l.date, kg: l.kg }); }
       else if (ex.kg !== l.kg) r.conflits++;
     });
+    // v33 : préférences alimentaires reprises seulement si celles d'ici sont vides (jamais remplacées).
+    if (aP(imp, "alimentation")) {
+      var ai = alimValide(imp.alimentation), al = alimValide(loc.alimentation);
+      if (!ai) r.ignores++;
+      else if (!alimNeutre(ai)) {
+        if (alimNeutre(al)) { r.ajouts++; if (appliquer) loc.alimentation = ai; }
+        else if (JSON.stringify(al) !== JSON.stringify(ai)) r.conflits++;
+      }
+    }
     return r;
   }
   // Profil importé nouveau : copie propre (champs simples + contenu validé par la même fusion).
@@ -276,7 +310,7 @@
   }
 
 
-  var V = "32";
+  var V = "33";
   function vignette(e) {
     // v31 : miniature claire et lisible (dessin du mouvement, sinon planche musculaire face ou dos), fournie par guide.js.
     if (window.S4L && S4L.vig) return S4L.vig(e);
@@ -452,22 +486,78 @@
     for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
     return a;
   }
+  function repasOk(r, p) { var ex = alim(p).exclus; return !r.tags.some(function (t) { return ex.indexOf(t) !== -1; }); }
+  function repasCompatibles(p) { return REPAS.filter(function (r) { return repasOk(r, p); }); }
+  function parMoment(l) {
+    return { pd: l.filter(function (r) { return r.moment === "Petit-déjeuner"; }), pl: l.filter(function (r) { return r.moment === "Repas"; }), co: l.filter(function (r) { return r.moment === "Collation"; }) };
+  }
+  // Goûts : chaque ingrédient aimé double le poids du repas, chaque ingrédient pas aimé le divise par 4 (jamais zéro).
+  function poidsRepas(r, p) {
+    var g = alim(p), w = 1;
+    r.ingr.forEach(function (x) { if (g.aimes.indexOf(x.id) !== -1) w *= 2; else if (g.pasAimes.indexOf(x.id) !== -1) w *= 0.25; });
+    return w;
+  }
+  function melangePondere(tab, p) {
+    return tab.map(function (r) { return { r: r, k: Math.pow(Math.random(), 1 / poidsRepas(r, p)) }; })
+      .sort(function (x, y) { return y.k - x.k; }).map(function (x) { return x.r; });
+  }
+  function tiragePondere(tab, poids) {
+    var tot = 0; tab.forEach(function (x, i) { tot += poids[i]; });
+    var u = Math.random() * tot;
+    for (var i = 0; i < tab.length; i++) { u -= poids[i]; if (u <= 0) return tab[i]; }
+    return tab[tab.length - 1];
+  }
+  // N'utilise QUE des repas compatibles : un repas exclu n'est jamais réintroduit, même si la cible n'est pas atteinte.
   function genererRepas(p) {
     var n = besoins(p), cible = n ? n.cible : 2800, prot = n ? n.proteines : 0;
-    var pd = REPAS.filter(function (r) { return r.moment === "Petit-déjeuner"; });
-    var pl = REPAS.filter(function (r) { return r.moment === "Repas"; });
-    var co = REPAS.filter(function (r) { return r.moment === "Collation"; });
+    var c = parMoment(repasCompatibles(p));
+    if (!c.pd.length && !c.pl.length && !c.co.length) return [];
     var bons = [], meilleur = null, ecartMin = 1e9;
     for (var t = 0; t < 600; t++) {
-      var mp = melange(pl).slice(0, Math.random() < 0.5 ? 2 : 3), mc = melange(co).slice(0, Math.random() < 0.5 ? 1 : 2);
-      var liste = [alea(pd), mp[0], mc[0]].concat(mp.slice(1), mc.slice(1));
+      var mp = melangePondere(c.pl, p).slice(0, Math.random() < 0.5 ? 2 : 3), mc = melangePondere(c.co, p).slice(0, Math.random() < 0.5 ? 1 : 2);
+      var liste = (c.pd.length ? [tiragePondere(c.pd, c.pd.map(function (r) { return poidsRepas(r, p); }))] : []).concat(mp.slice(0, 1), mc.slice(0, 1), mp.slice(1), mc.slice(1));
       var kcal = 0, pr = 0;
       liste.forEach(function (r) { kcal += r.kcal; pr += r.prot; });
       var ecart = Math.abs(kcal - cible) + (prot && pr < prot ? (prot - pr) * 10 : 0);
       if (ecart <= 100) bons.push(liste);
       if (ecart < ecartMin) { ecartMin = ecart; meilleur = liste; }
     }
-    return (bons.length ? alea(bons) : meilleur).map(function (r) { return r.id; });
+    var choix = bons.length ? tiragePondere(bons, bons.map(function (l) { return l.reduce(function (w, r) { return w * poidsRepas(r, p); }, 1); })) : meilleur;
+    return choix.map(function (r) { return r.id; });
+  }
+  // Ids de repas encore valables (connus et compatibles avec les exclusions actuelles) ?
+  function idsValides(ids, p) { return Array.isArray(ids) && ids.every(function (id) { var r = repasParId(id); return !!r && repasOk(r, p); }); }
+  var LIMITES_ALIM = "Les exclusions filtrent des suggestions indicatives d'après les ingrédients listés. Ce n'est pas une garantie contre les allergies : traces, produits transformés et sauces non listés ne sont pas couverts. Vérifie toujours les étiquettes. Valeurs nutritionnelles approximatives (d'après CIQUAL), pas un avis médical ni diététique.";
+  function nomsExclus(p) { return alim(p).exclus.map(function (c) { var x = (window.ALIM_EXCLUSIONS || []).filter(function (e) { return e.code === c; })[0]; return x ? x.nom.split(" (")[0].split(" :")[0] : c; }); }
+  function pluriel(n, s, pl) { return n + " " + (n > 1 ? pl : s); }
+  function texteCompte(p) {
+    var l = repasCompatibles(p), c = parMoment(l);
+    var t = pluriel(l.length, "repas compatible", "repas compatibles") + " sur " + REPAS.length + " : " + pluriel(c.pd.length, "petit-déjeuner", "petits-déjeuners") + ", " + c.pl.length + " repas, " + pluriel(c.co.length, "collation", "collations") + ".";
+    if (c.pd.length < 1 || c.pl.length < 2 || c.co.length < 1) t += " Pas assez pour composer une journée complète.";
+    return t;
+  }
+  // Message honnête si les repas compatibles ne suffisent pas ou si la cible n'est pas atteinte (rien d'exclu n'est ajouté).
+  function messageRepas(p, repas) {
+    var l = repasCompatibles(p), c = parMoment(l), n = besoins(p), cible = n ? n.cible : 2800, prot = n ? n.proteines : 0, kcal = 0, pr = 0;
+    repas.forEach(function (r) { kcal += r.kcal; pr += r.prot; });
+    var manque = c.pd.length < 1 || c.pl.length < 2 || c.co.length < 1, loinK = kcal < cible * 0.9, loinP = prot > 0 && pr < prot * 0.9;
+    if (!manque && !loinK && !loinP) return "";
+    var t;
+    if (alim(p).exclus.length) {
+      t = (manque || loinK ? "Pas assez de repas compatibles avec tes exclusions : " + pluriel(l.length, "repas disponible", "repas disponibles") + " (" + pluriel(c.pd.length, "petit-déjeuner", "petits-déjeuners") + ", " + c.pl.length + " repas, " + pluriel(c.co.length, "collation", "collations") + ")." : "Avec tes exclusions, " + pluriel(l.length, "repas compatible", "repas compatibles") + ".");
+      if (loinK) t += " Cible d'environ " + cible + " kcal non atteinte (≈ " + kcal + " kcal proposées).";
+      if (loinP) t += " Protéines : ≈ " + pr + " g sur " + prot + " g visés.";
+      t += " Aucun repas exclu n'est ajouté pour compléter : augmente les portions ou assouplis tes exclusions dans le profil.";
+    } else {
+      t = (loinK ? "Cible d'environ " + cible + " kcal non atteinte avec les repas proposés (≈ " + kcal + " kcal)." : "") + (loinP ? " Protéines : ≈ " + pr + " g sur " + prot + " g visés." : "") + " Augmente un peu les portions.";
+    }
+    return '<div class="alerte" role="status">' + esc(t.trim()) + "</div>";
+  }
+  function rappelFiltre(p) {
+    var g = alim(p), ex = nomsExclus(p), t;
+    if (!ex.length && !g.aimes.length && !g.pasAimes.length) t = "Aucune préférence alimentaire : tous les repas sont proposés.";
+    else t = (ex.length ? "Filtre actif, sans : " + ex.join(", ") + "." : "Aucune exclusion.") + (g.aimes.length || g.pasAimes.length ? " Goûts pris en compte : " + pluriel(g.aimes.length, "aimé", "aimés") + ", " + pluriel(g.pasAimes.length, "pas aimé", "pas aimés") + "." : "");
+    return '<p class="doux filtre-alim">' + esc(t) + ' <a href="#/profil">Modifier dans le profil</a></p>';
   }
   function genererAleatoire(p) {
     var ok = EXERCICES.filter(function (e) { return faisable(e, p); });
@@ -491,6 +581,8 @@
     h += '<button data-alea="1">' + (a ? "Régénérer" : "Générer une séance aléatoire") + "</button>";
     if (a) {
       var exos = a.exos.map(exoParId).filter(Boolean);
+      // Repas tirés avant un changement de préférences : remplacés s'ils ne sont plus compatibles.
+      if (!idsValides(a.repas, p)) { a.repas = genererRepas(p); sauver(); }
       var repas = a.repas.map(repasParId).filter(Boolean);
       var gA = groupesSeance(exos, exos.length ? exos[0].groupe : "");
       h += blocEchauffement(p, gA);
@@ -512,7 +604,8 @@
       if (n) h += '<br><span class="doux">Objectif estimé : ' + n.cible + " kcal et " + n.proteines + " g de protéines.</span>";
       else h += '<br><span class="doux">Profil incomplet : repas choisis pour environ 2 800 kcal (valeur type). Renseigne ta taille, ton poids, ton âge et ton sexe dans le profil pour viser ton objectif.</span>';
       h += "</p>";
-      h += '<div class="alerte">Repas indicatifs, valeurs approximatives (ordre de grandeur, pas des mesures). Ajuste les quantités à ton appétit et à ton objectif. Pas un avis médical.</div>';
+      h += messageRepas(p, repas) + rappelFiltre(p);
+      h += '<div class="alerte">' + esc(LIMITES_ALIM) + " Ajuste les quantités à ton appétit et à ton objectif.</div>";
     }
     return h + "</div>";
   }
@@ -722,18 +815,22 @@
     } else {
       h += "<p>Renseigne ta taille, ton poids, ton âge et ton sexe dans le <a href=\"#/profil\">profil</a> pour estimer tes besoins.</p>";
     }
-    h += '<div class="alerte">Estimation indicative, pas un avis médical. Valeurs nutritionnelles d\'aliments : à venir (Open Food Facts et CIQUAL/ANSES).</div></div>';
+    h += '<div class="alerte">Estimation indicative, pas un avis médical. Valeurs nutritionnelles des repas : approximatives, d\'après la table CIQUAL (ANSES).</div></div>';
     vue.innerHTML = h;
   }
 
   // ---------- Onglet Repas ----------
   function repasDuJour(p) {
     var j = aujourdhui();
-    if (p.aleatoire && p.aleatoire.date === j && p.aleatoire.repas) return p.aleatoire.repas;
-    if (p.repasJour && p.repasJour.date === j && Array.isArray(p.repasJour.repas)) return p.repasJour.repas;
-    p.repasJour = { date: j, repas: genererRepas(p) };
+    var al = p.aleatoire && p.aleatoire.date === j && p.aleatoire.repas ? p.aleatoire : null;
+    var cur = al ? al.repas : p.repasJour && p.repasJour.date === j && Array.isArray(p.repasJour.repas) ? p.repasJour.repas : null;
+    // v33 : des repas tirés avant un changement de préférences (ou venus d'un import) sont remplacés s'ils sont exclus.
+    if (cur && idsValides(cur, p)) return cur;
+    var nr = genererRepas(p);
+    p.repasJour = { date: j, repas: nr };
+    if (al) al.repas = nr;
     sauver();
-    return p.repasJour.repas;
+    return nr;
   }
   function vueRepas() {
     var p = profil(), j = aujourdhui();
@@ -749,15 +846,18 @@
     var n = besoins(p);
     if (n) h += '<br><span class="doux">Objectif estimé : ' + n.cible + " kcal et " + n.proteines + " g de protéines.</span>";
     else h += '<br><span class="doux">Profil incomplet : repas choisis pour environ 2 800 kcal (valeur type). Renseigne ta taille, ton poids, ton âge et ton sexe dans le <a href="#/profil">profil</a> pour viser ton objectif.</span>';
-    h += '</p><button data-repas-regen="1">Autres repas</button></div>';
-    h += '<div class="carte verre"><h3>Tous les repas</h3><p class="doux">Pour varier ou remplacer un repas.</p>';
+    h += "</p>" + messageRepas(p, repas) + rappelFiltre(p) + '<button data-repas-regen="1">Autres repas</button></div>';
+    var compat = repasCompatibles(p), masques = REPAS.length - compat.length;
+    h += '<div class="carte verre"><h3>Tous les repas</h3><p class="doux">Pour varier ou remplacer un repas.' + (masques ? " " + pluriel(masques, "repas est masqué", "repas sont masqués") + " par tes exclusions." : "") + "</p>";
     ["Petit-déjeuner", "Repas", "Collation"].forEach(function (m) {
+      var lm = compat.filter(function (r) { return r.moment === m; });
       h += '<h3 style="margin-top:12px">' + esc(m) + "</h3>";
-      REPAS.filter(function (r) { return r.moment === m; }).forEach(function (r) {
+      if (!lm.length) h += '<p class="doux">Aucun repas compatible avec tes exclusions.</p>';
+      lm.forEach(function (r) {
         h += '<div class="repas"><strong>' + esc(r.nom) + '</strong><div class="doux">' + esc(r.detail) + '</div><div class="doux">≈ ' + r.kcal + " kcal, " + r.prot + " g de protéines</div></div>";
       });
     });
-    h += '</div><div class="alerte">Repas indicatifs, valeurs approximatives (ordre de grandeur, pas des mesures). Ajuste les quantités à ton appétit et à ton objectif. Pas un avis médical.</div>';
+    h += '</div><div class="alerte">' + esc(LIMITES_ALIM) + " Ajuste les quantités à ton appétit et à ton objectif.</div>";
     vue.innerHTML = h;
   }
 
@@ -893,6 +993,7 @@
     h += "</div>";
     if (p.note) h += '<p class="doux">' + esc(p.note) + "</p>";
     h += '<button type="submit">Enregistrer</button></form>';
+    h += blocAlimentation(p);
     // Suivi du poids
     h += '<div class="carte verre"><h3>Suivi du poids</h3>';
     var log = p.poidsLog.slice(-8).reverse();
@@ -904,10 +1005,67 @@
     h += '<div class="carte verre"><h3>Données</h3><p class="doux">Tes données restent dans ce navigateur, sur cet appareil. Elles ne sont envoyées nulle part. Vider le navigateur les efface.</p><button class="danger" data-supprimer="1">Supprimer ce profil</button></div>';
     h += blocRappel();
     h += blocTransfert();
-    h += '<div class="alerte">Sport4Life donne des conseils généraux, pas un avis médical. Sources prévues : recommandations OMS 2020 sur l\'activité physique, littérature scientifique sur l\'hypertrophie, Open Food Facts et CIQUAL/ANSES.</div>';
+    h += '<div class="alerte">Sport4Life donne des conseils généraux, pas un avis médical. Sources : recommandations OMS 2020 sur l\'activité physique, littérature scientifique sur l\'hypertrophie, table CIQUAL/ANSES pour les repas (valeurs approximatives).</div>';
     vue.innerHTML = h;
   }
 
+  // Section Alimentation : enregistrée à chaque changement, sans toucher au formulaire Informations.
+  function blocAlimentation(p) {
+    var g = alim(p), h = '<div class="carte verre" id="alimentation"><h3>Alimentation</h3>';
+    h += '<p class="doux">Ces choix filtrent les repas proposés (onglet Repas, « Autres repas », séance aléatoire), pour ce profil seulement. Ils sont enregistrés dès que tu les modifies.</p>';
+    h += '<label for="alim-regime">Raccourci de régime</label><select id="alim-regime" aria-describedby="alim-regime-aide"><option value="">Aucun (je choisis moi-même)</option>' + (window.ALIM_REGIMES || []).map(function (r) {
+      return '<option value="' + r.id + '"' + (g.regime === r.id ? " selected" : "") + ">" + esc(r.nom) + "</option>";
+    }).join("") + '</select><p class="doux petit" id="alim-regime-aide">Un raccourci coche les exclusions correspondantes (végétarien : viande, poisson, crustacés, mollusques ; végétalien : en plus œufs, lait, miel ; pescétarien : viande). Tu peux ensuite cocher ou décocher chaque case.</p>';
+    h += '<p class="alim-intro">Coche ce que tu ne veux jamais voir dans les repas proposés :</p>';
+    var groupes = [];
+    (window.ALIM_EXCLUSIONS || []).forEach(function (x) { if (groupes.indexOf(x.groupe) === -1) groupes.push(x.groupe); });
+    groupes.forEach(function (gr) {
+      h += '<fieldset class="alim-groupe"><legend>' + esc(gr) + "</legend>";
+      (window.ALIM_EXCLUSIONS || []).filter(function (x) { return x.groupe === gr; }).forEach(function (x) {
+        var on = g.exclus.indexOf(x.code) !== -1, aide = x.aide ? ' aria-describedby="aide-' + x.code + '"' : "";
+        h += '<label class="alim-case"><input type="checkbox" data-alim-ex="' + x.code + '"' + (on ? " checked" : "") + aide + "><span>" + esc(x.nom) + "</span></label>";
+        if (x.aide) h += '<p class="doux petit alim-aide" id="aide-' + x.code + '">' + esc(x.aide) + "</p>";
+      });
+      h += "</fieldset>";
+    });
+    h += '<p class="alim-compte" id="alim-compte" role="status" aria-live="polite">' + esc(texteCompte(p)) + "</p>";
+    h += "<h4>Goûts</h4><p class=\"doux\">Les goûts orientent le tirage (plus ou moins souvent) sans jamais bloquer un repas. Seules les exclusions retirent des repas.</p>";
+    [["aime", "aimes", "Ingrédients que j'aime"], ["pas", "pasAimes", "Ingrédients que je n'aime pas"]].forEach(function (k) {
+      h += '<details class="alim-gouts"><summary>' + esc(k[2]) + ' <span id="nb-' + k[0] + '">(' + g[k[1]].length + ")</span></summary><div class=\"puces\">";
+      (window.ALIMENTS || []).forEach(function (f) {
+        h += '<label class="puce"><input type="checkbox" data-alim-' + k[0] + '="' + f.id + '"' + (g[k[1]].indexOf(f.id) !== -1 ? " checked" : "") + ">" + esc(f.nom) + "</label>";
+      });
+      h += "</div></details>";
+    });
+    h += '<div class="alerte">' + esc(LIMITES_ALIM) + "</div></div>";
+    return h;
+  }
+  function changerAlim(t) {
+    var p = profil(), g = JSON.parse(JSON.stringify(alim(p)));
+    var ajoute = function (l, x) { if (l.indexOf(x) === -1) l.push(x); }, retire = function (l, x) { var i = l.indexOf(x); if (i !== -1) l.splice(i, 1); };
+    if (t.id === "alim-regime") { g.regime = t.value; var r = alimRegime(t.value); if (r) r.exclus.forEach(function (c) { ajoute(g.exclus, c); }); }
+    else if (t.hasAttribute("data-alim-ex")) { (t.checked ? ajoute : retire)(g.exclus, t.getAttribute("data-alim-ex")); }
+    else if (t.hasAttribute("data-alim-aime")) { var a1 = t.getAttribute("data-alim-aime"); (t.checked ? ajoute : retire)(g.aimes, a1); if (t.checked) retire(g.pasAimes, a1); }
+    else if (t.hasAttribute("data-alim-pas")) { var a2 = t.getAttribute("data-alim-pas"); (t.checked ? ajoute : retire)(g.pasAimes, a2); if (t.checked) retire(g.aimes, a2); }
+    // Raccourci décoché dès qu'une de ses exclusions est retirée.
+    var rg = alimRegime(g.regime);
+    if (rg && rg.exclus.some(function (c) { return g.exclus.indexOf(c) === -1; })) g.regime = "";
+    p.alimentation = alimValide(g) || alimVide();
+    // Les repas déjà tirés ne sont plus forcément conformes : on les invalide (repas du jour) ou on les retire (séance aléatoire).
+    p.repasJour = null;
+    if (p.aleatoire && Array.isArray(p.aleatoire.repas)) p.aleatoire.repas = genererRepas(p);
+    sauver();
+    // Mise à jour sur place (le formulaire Informations, peut-être en cours de saisie, n'est pas redessiné).
+    var a = p.alimentation, z = document.getElementById("alim-regime");
+    if (z) z.value = a.regime;
+    [].forEach.call(document.querySelectorAll("[data-alim-ex]"), function (c) { c.checked = a.exclus.indexOf(c.getAttribute("data-alim-ex")) !== -1; });
+    [].forEach.call(document.querySelectorAll("[data-alim-aime]"), function (c) { c.checked = a.aimes.indexOf(c.getAttribute("data-alim-aime")) !== -1; });
+    [].forEach.call(document.querySelectorAll("[data-alim-pas]"), function (c) { c.checked = a.pasAimes.indexOf(c.getAttribute("data-alim-pas")) !== -1; });
+    var n1 = document.getElementById("nb-aime"), n2 = document.getElementById("nb-pas"), cp = document.getElementById("alim-compte");
+    if (n1) n1.textContent = "(" + a.aimes.length + ")";
+    if (n2) n2.textContent = "(" + a.pasAimes.length + ")";
+    if (cp) cp.textContent = texteCompte(p);
+  }
   function lireForm(p) {
     p = p || profil();
     var g = function (i) { return document.getElementById(i).value; };
@@ -1035,6 +1193,8 @@
     }
   });
   vue.addEventListener("change", function (ev) {
+    var tg = ev.target;
+    if (tg.id === "alim-regime" || (tg.hasAttribute && (tg.hasAttribute("data-alim-ex") || tg.hasAttribute("data-alim-aime") || tg.hasAttribute("data-alim-pas")))) { changerAlim(tg); return; }
     if (ev.target.id === "sel-exo") { vueHistorique.exo = ev.target.value; vueHistorique(); return; }
     if (ev.target.id === "sel") { etat.actif = ev.target.value; sauver(); route(); }
   });
@@ -1071,6 +1231,8 @@
     window.S4Guide.sources.perso = function () { return persoListe(profil()); };
     window.S4Guide.sources.persoTitre = function () { return "Ma séance composée"; };
   }
+  // Accès en lecture pour les tests automatisés (dev/v33-tests.txt).
+  window.S4Repas = { generer: function (p) { return genererRepas(p || profil()); }, compatibles: function (p) { return repasCompatibles(p || profil()).map(function (r) { return r.id; }); }, alimValide: alimValide };
   function route() {
     var h = location.hash.replace(/^#\/?/, "") || "aujourdhui";
     var parts = h.split("/"), nav = parts[0];
