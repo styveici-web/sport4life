@@ -40,3 +40,9 @@ v22 : photos des échauffements et étirements (Pexels, 400 x 300). Tima Miroshn
 - Schéma musculaire : Muscles_front_and_back.svg, OpenStax / T. Kebert, licence CC BY-SA 4.0, via Wikimedia Commons. Modifications : métadonnées retirées, éléments dupliqués développés, couleurs, classes par groupe musculaire, nombres arrondis. Les zones colorées par exercice sont une simplification sans pourcentage d'activation.
 - Pompes : muscles colorés d'après Snarr et Esco, J Hum Kinet (PMC3916913).
 - Les licences CC BY-SA imposent de conserver ces crédits et la même licence pour les versions modifiées de ces images.
+
+
+## Sources des muscles (fiche Muscles de chaque exercice)
+- ExRx.net, fiches d'exercices (Push-up, Decline Push-up, Close Grip Push-up, Bench Dip, Dumbbell Shoulder Press, Pull-up, Dumbbell Bent-over Row, Dumbbell Curl, Superman, Squat, Single Leg Split Squat, Front Plank, Cable Seated Row, Cable Pulldown, Jump Rope). Consultées en lecture, aucun contenu copié.
+- Études : Snarr et Esco, J Hum Kinet (PMC3916913) ; Cogley / pompes mains rapprochées (PMC4732391) ; Lehecka, ponts (PMC5534144) ; tractions (PMC5548150, PMID 21068680) ; curl (PMID 36976950) ; squat à vide (PMID 9107637) ; fente bulgare (PMC12382192) ; planche (PMC8964357, PMID 28157133) ; roue abdominale, Escamilla 2006 (PMID 16649890) ; lancer de médecine-ball (PMID 19826303) ; corde à sauter (PMID 41295793).
+- Dessins de mouvement ajoutés : Everkinetic, CC BY-SA 3.0, Wikimedia Commons (Biceps curl with dumbbell, Close triceps pushup, Bridging, Ab-rollout-on-knees, Squats using dumbbells).
