@@ -32,3 +32,11 @@ Photos approchantes : Pompes lestées (pompes sur kettlebells, pas de gilet), Sq
 v8 : photos plus représentatives (athlètes noirs) quand une photo correcte du mouvement existait. Les photos portrait sont affichées entières sur fond flouté pour garder le mouvement visible. Photo approchante : squat disque (athlète non noir, bon mouvement).
 
 v22 : photos des échauffements et étirements (Pexels, 400 x 300). Tima Miroshnichenko 6388359 (triceps) ; RDNE Stock project 8401123 (épaule) ; Monstera Production 6998459 (côté du buste), 6311694 (intérieur de cuisse), 5384552 (avant du tronc) ; Klaus Nielsen 6303722 (posture de l'enfant) ; Vi Nguyen 17572172 (chat-vache) ; RF._.studio 3886098 (arrière de cuisse, assis) ; Ketut Subiyanto 5038830 (avant de cuisse, debout). Pompes lentes, flexions de jambes et corde réutilisent les photos de la bibliothèque. Pas de photo correcte trouvée pour : marche sur place, montées de genoux, talons-fesses, cercles d'épaules et de bras, ouvertures de poitrine, serrer les omoplates, rotations du buste, fentes marchées, balancements de jambe, chevilles, bras et jambe opposés à quatre pattes, cercles de hanches, montées sur la pointe, pectoraux au mur, mollet, fessiers, torsion allongée : ces lignes restent en texte.
+
+
+## Illustrations de mouvement et schéma musculaire (version candidate v29)
+
+- Dessins de mouvement : Everkinetic, licence CC BY-SA 3.0, via Wikimedia Commons. Fichiers : Push-ups-1.png et Push-ups-2.png (pompes) ; Push up feet elevated 2 1.svg et 2 2.svg (pompes pieds surélevés) ; Bench dips 1.svg et 2.svg (dips sur chaise) ; Dumbbell shoulder press 1.svg et 2.svg (développé aux haltères) ; Pull ups 1.svg et 2.svg (tractions) ; Supermans 1.svg et 2.svg (superman). Modifications : couleurs inversées pour le thème sombre, SVG allégés (nombres arrondis, espaces retirés).
+- Schéma musculaire : Muscles_front_and_back.svg, OpenStax / T. Kebert, licence CC BY-SA 4.0, via Wikimedia Commons. Modifications : métadonnées retirées, éléments dupliqués développés, couleurs, classes par groupe musculaire, nombres arrondis. Les zones colorées par exercice sont une simplification sans pourcentage d'activation.
+- Pompes : muscles colorés d'après Snarr et Esco, J Hum Kinet (PMC3916913).
+- Les licences CC BY-SA imposent de conserver ces crédits et la même licence pour les versions modifiées de ces images.
