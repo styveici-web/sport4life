@@ -123,7 +123,7 @@ details.carte li{margin:4px 0}
 .gs-photo{width:100%;border-radius:12px}
 .gs-anat svg{width:100%;height:auto;max-height:30dvh}
 .gs-anat path{fill:#2b2f38;stroke:#4a505c;stroke-width:.4}
-.gs-anat .m-pec,.gs-anat .m-del,.gs-anat .m-tri{fill:#3b82f6;stroke:#9cc2ff}
+.gs-anat.on-pec .m-pec,.gs-anat.on-delt .m-delt,.gs-anat.on-triceps .m-triceps,.gs-anat.on-biceps .m-biceps,.gs-anat.on-abs .m-abs,.gs-anat.on-obliques .m-obliques,.gs-anat.on-quad .m-quad,.gs-anat.on-trap .m-trap,.gs-anat.on-lats .m-lats,.gs-anat.on-deltpost .m-deltpost,.gs-anat.on-glute .m-glute,.gs-anat.on-ischio .m-ischio,.gs-anat.on-mollet .m-mollet{fill:#3b82f6;stroke:#9cc2ff}
 .gs.open .gs-hero{padding:6px 12px}.gs.open .gs-hero .gs-thumb,.gs.open .gs-hero p{display:none}.gs.open .gs-hero h3{font-size:1.05rem;margin:0}
 .gs.open .gs-mid{flex:none;flex-direction:row;gap:14px;justify-content:center;padding:4px 0 8px}
 .gs.open .guide-big{font-size:3.4rem}
