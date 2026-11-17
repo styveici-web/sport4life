@@ -1,4 +1,4 @@
-# Sport4Life v28 - scripts de test (aucun secret, aucune donnée perso). Regénérer site/ = copie de sport4life-app + fichiers _t_*.html / _h_*.html
+# Sport4Life v28/v29 - scripts de test (aucun secret, aucune donnée perso). Regénérer site/ = copie de sport4life-app + fichiers _t_*.html / _h_*.html
 # ===== mktest.py (tests import/export A-I, Chrome headless: google-chrome --headless=new --virtual-time-budget=8000 --dump-dom file://.../_t_X.html)
 import json,sys
 idx=open('/tmp/rec/index.html').read()
@@ -111,12 +111,14 @@ ok("I export contient la pesee non ecrite",o.profils[0].poidsLog.some(function(l
 
 ''')
 
-# ===== mkh.py (parcours de la séance guidée réelle, états place/attente/serie/repos/pause/mouv/mus/ste/autre_*, captures 390x844 @2x)
+
+# ===== mkh.py (parcours de la séance guidée réelle: python3 mkh.py <etat> [id_exercice] ; états place/attente/serie/repos/pause/mouv/mus/ste/autre_*, captures 390x844 @2x)
 import sys,re
 idx=open('/tmp/rec/index.html').read()
 state=sys.argv[1]
+exid=sys.argv[2] if len(sys.argv)>2 else ""
 seed='''<script>
-try{localStorage.clear();localStorage.setItem("sport4life.v1",JSON.stringify({actif:"p1",profils:[{id:"p1",nom:"Test fixture",materiel:["corps"]}]}));
+window.AUTRE="'''+exid+'''";try{localStorage.clear();localStorage.setItem("sport4life.v1",JSON.stringify({actif:"p1",profils:[{id:"p1",nom:"Test fixture",materiel:["corps"]}]}));
 localStorage.setItem("sport4life.guide",JSON.stringify({voix:false,bip:false,trans:10,repos:30,tempo:3,p:{},auto:false}));}catch(e){}
 </script>'''
 drv='''<script>
@@ -129,7 +131,7 @@ function prim(){var b=document.querySelector(".gs-prim"); return b?b.textContent
 window.addEventListener("load",function(){
  setTimeout(function(){
   var ex=window.EXERCICES; function g(id){return ex.filter(function(e){return e.id===id})[0]}
-  window.S4Guide.sources.jour=function(){if(swap)return [g(ex.filter(function(e){return e.id!=="pompes"&&!e.requis.length})[0].id),g("pompes")];return [g("pompes"),g(window.AUTRE||ex.filter(function(e){return e.id!=="pompes"&&!e.requis.length})[0].id)]};
+  window.S4Guide.sources.jour=function(){if(swap)return [g(window.AUTRE||ex.filter(function(e){return e.id!=="pompes"&&!e.requis.length})[0].id),g("pompes")];return [g("pompes"),g(window.AUTRE||ex.filter(function(e){return e.id!=="pompes"&&!e.requis.length})[0].id)]};
   var b=document.createElement("button");b.setAttribute("data-guide","seance-jour");document.body.appendChild(b);b.click();
   setTimeout(function(){
    clk("sess-begin");
@@ -167,11 +169,14 @@ function done(){var m=document.createElement("pre");m.id="log";m.style.cssText="
 idx=idx.replace('<script src="data/exercises.js',seed+'\n<script src="data/exercises.js',1).replace('</body>',drv+'</body>')
 open('/tmp/rec/site/_h_%s.html'%state,'w').write(idx)
 
+
 # ===== shot.sh
 # usage: shot.sh state  -> /tmp/rec/shots/state.png + log
 s=$1; mkdir -p /tmp/rec/shots
 google-chrome --headless=new --no-sandbox --disable-gpu --window-size=390,844 --force-device-scale-factor=2 --virtual-time-budget=${2:-25000} --screenshot=/tmp/rec/shots/$s.png file:///tmp/rec/site/_h_$s.html >/dev/null 2>&1
 google-chrome --headless=new --no-sandbox --disable-gpu --window-size=390,844 --virtual-time-budget=${2:-25000} --dump-dom file:///tmp/rec/site/_h_$s.html 2>/dev/null | grep -o 'data-log="[^"]*"\|MISSING:[a-z-]*' | head -3
+
 # ===== runt.sh
 for n in "$@"; do echo "== $n"; google-chrome --headless=new --no-sandbox --disable-gpu --window-size=390,844 --virtual-time-budget=8000 --dump-dom file:///tmp/rec/site/_t_$n.html 2>/dev/null | grep -o 'data-log="[^"]*"' | sed 's/ || /\n  /g;s/data-log="/  /;s/"$//' | grep -v "^  EXPORT="; done
-# ===== sources illustrations: Wikimedia Commons Push-ups-1.png, Push-ups-2.png (Everkinetic, CC BY-SA 3.0) ; Muscles_front_and_back.svg (OpenStax / T. Kebert, CC BY-SA 4.0). SVG allégé: attributs inkscape/styles supprimés, <use> développés, classes m-pec (path847) m-del (path861) m-tri (path1542, path1513).
+
+# ===== sources v29: dessins Everkinetic (CC BY-SA 3.0, Wikimedia Commons) : Push-ups-1/2.png, Push up feet elevated 2 1/2.svg, Bench dips 1/2.svg, Dumbbell shoulder press 1/2.svg, Pull ups 1/2.svg, Supermans 1/2.svg. Schéma Muscles_front_and_back.svg (OpenStax / T. Kebert, CC BY-SA 4.0). Groupes (ids de chemins du SVG original): pec path847, delt path861, biceps path881, abs path970/974/978/1012, obliques path950, quad path1366/1554, trap path1919, lats path3733, deltpost path1452, triceps path1542/1513, glute path2744, ischio path2900/2962, mollet path3075/3022. Exercices sans dessin libre trouvé (photo conservée): voir rapport.
