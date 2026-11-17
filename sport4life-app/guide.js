@@ -324,11 +324,12 @@
       h += '<div class="gs-anat ' + cl + '">' + ANAT.svg + '</div>';
       if (e.id === "pompes") h += '<p class="doux petit">Schéma simplifié. En bleu, les muscles mesurés dans l\'étude de Snarr et Esco (J Hum Kinet, PMC3916913) : grand pectoral, deltoïde (coloré en entier, sans distinguer ses faisceaux) et triceps (de dos, seules ses parties visibles apparaissent). Les autres muscles ne sont pas colorés. Aucun pourcentage d\'activation.</p>';
       else h += '<p class="doux petit">Schéma simplifié, face et dos. En bleu : les muscles principaux d\'après les sources ci-dessous, colorés en entier, sans pourcentage. D\'autres muscles travaillent aussi. ' + esc(ANAT.note[e.id] || "") + '</p><p class="doux petit">Sources : ' + esc(ANAT.src[e.id] || "") + '</p>';
+      if (e.id === "rotation-medball") h += '<p class="doux petit"><strong>Réserve :</strong> la coloration des obliques n\'est pas vérifiée pour cet exercice. Aucune étude trouvée sur la rotation russe elle-même ; seul un lancer latéral de medecine-ball est mesuré. Le schéma est indicatif.</p>';
       h += '<p class="doux petit">Crédits : schéma OpenStax / T. Kebert (CC BY-SA 4.0), via Wikimedia Commons, couleurs et recadrage modifiés.</p>';
     } else h += '<p class="doux petit">Exercice du corps entier : pas de schéma musculaire, aucun muscle n\'est mis en avant.</p>';
     return h;
   }
-  window.S4L = { has: etiqExo, thumb: function (e) { var d = drawOf(e); return d ? d[1] : null; }, steps: htmlSteps, mouv: function (e) { return etiqExo(e) ? htmlMouv(e) + '<p class="doux petit">Crédits : dessins Everkinetic (CC BY-SA 3.0), via Wikimedia Commons, couleurs modifiées.</p>' : ""; }, mus: htmlMus };
+  window.S4L = { plate: function (e) { return aMus(e) ? '<div class="gs-anat ' + aMus(e).map(function (k) { return "on-" + k; }).join(" ") + '">' + ANAT.svg + '</div>' : null; }, has: etiqExo, thumb: function (e) { var d = drawOf(e); return d ? d[1] : null; }, steps: htmlSteps, mouv: function (e) { return etiqExo(e) ? htmlMouv(e) + '<p class="doux petit">Crédits : dessins Everkinetic (CC BY-SA 3.0), via Wikimedia Commons, couleurs modifiées.</p>' : ""; }, mus: htmlMus };
   function htmlSteps(e) {
     return '<p class="doux">Pas de dessin de mouvement exact pour cet exercice : voici les consignes écrites.</p><ol class="etapes">' + (e.etapes || []).map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>";
   }
