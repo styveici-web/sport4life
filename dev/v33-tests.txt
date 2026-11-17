@@ -2,7 +2,7 @@
 # Même principe que dev/v31-tests.txt : copier sport4life-app dans <R>/site, copier index.html dans <R>/index.html,
 # puis générer les pages _r_*.html et les lancer dans Chrome headless (temps virtuel).
 # Usage (R = dossier de travail, ex. /tmp/rec) :
-#   python3 mkrepas.py <R>           -> écrit <R>/site/_r_R1.html ... _r_R11.html (R1 R2 R2b R2c R3 R3b R4 R6 R7 R8 R9 R9b R10 R11)
+#   python3 mkrepas.py <R>           -> écrit <R>/site/_r_R1.html ... _r_R12.html (R1 R2 R2b R2c R3 R3b R4 R6 R7 R8 R9 R9b R10 R11 R12)
 #   sh runr.sh <R> R1 R2 ...          -> affiche OK / ECHEC pour chaque vérification
 # Les suites v28 (A-I, T1), v31 (S1-S9) et v32 (C1-C8) restent à lancer telles quelles (zéro régression).
 # ===== mkrepas.py
@@ -108,21 +108,23 @@ ok("R5 tout ingredient 'lactose' porte aussi 'lait'",ALIMENTS.every(function(a){
 # R6 cohérence des kcal calculées pour les 12 repas d'origine
 build('R6',NEUTRE,'''
 var A={};ALIMENTS.forEach(function(a){A[a.id]=a});
-ok("R6 kcal, proteines et tags recalcules depuis les ingredients pour les 45 repas",REPAS.every(function(r){var k=0,p=0,t=[];r.ingr.forEach(function(x){k+=A[x.id].kcal*x.g/100;p+=A[x.id].prot*x.g/100;A[x.id].tags.forEach(function(g){if(t.indexOf(g)===-1)t.push(g)})});return r.kcal===Math.round(k/10)*10&&r.prot===Math.round(p)&&same(r.tags,t.sort())}));
+ok("R6 kcal, proteines et tags recalcules depuis les ingredients pour les "+REPAS.length+" repas",REPAS.every(function(r){var k=0,p=0,t=[];r.ingr.forEach(function(x){k+=A[x.id].kcal*x.g/100;p+=A[x.id].prot*x.g/100;A[x.id].tags.forEach(function(g){if(t.indexOf(g)===-1)t.push(g)})});return r.kcal===Math.round(k/10)*10&&r.prot===Math.round(p)&&same(r.tags,t.sort())}));
 var OLD={p1:["Porridge banane",620],p2:["Omelette et pain complet",560],p3:["Fromage blanc, muesli et amandes",520],d1:["Poulet, riz et brocolis",650],d2:["Saumon, patate douce et haricots verts",650],d3:["Pâtes complètes au bœuf",650],d4:["Lentilles et œufs",600],d5:["Thon, quinoa et légumes grillés",570],d6:["Dinde et pommes de terre",560],c1:["Yaourt grec, miel et noix",300],c2:["Tartines de beurre de cacahuète",480],c3:["Skyr et fruits",230]};
-// Écarts > 10 % documentés (anciennes valeurs écrites à la main, surtout surestimées) : voir le rapport v33.
-var DOC={p1:1,p2:1,p3:1,d2:1,d3:1,d4:1,d6:1,c1:1,c3:1};
+// Écarts > 10 % documentés, valeurs ANSES-CIQUAL 2025 contre anciennes valeurs écrites à la main : voir le rapport v33.
+var DOC={p1:1,p2:1,d2:1,d3:1,d4:1,d6:1,c1:1,c3:1};
+// Seul renommage autorisé : c3, le skyr (sans correspondance CIQUAL établie) étant remplacé par du fromage blanc.
+var RENOMME={c3:"Fromage blanc, pomme et flocons d'avoine"};
 var lignes=[],nonDoc=[];
 Object.keys(OLD).forEach(function(id){var r=R_(id),e=Math.round((r.kcal-OLD[id][1])/OLD[id][1]*1000)/10;lignes.push(id+" "+OLD[id][1]+"->"+r.kcal+" ("+e+"%)");if(Math.abs(e)>10&&!DOC[id])nonDoc.push(id);if(Math.abs(e)<=10&&DOC[id])nonDoc.push(id+" (doc. a retirer)");});
 L("R6 ecarts",lignes.join(" ; "));
-ok("R6 12 repas d'origine: memes id et noms",Object.keys(OLD).every(function(id){return R_(id)&&R_(id).nom===OLD[id][0]}));
+ok("R6 12 repas d'origine: memes id, memes noms sauf c3 (renommage documente)",Object.keys(OLD).every(function(id){return R_(id)&&R_(id).nom===(RENOMME[id]||OLD[id][0])}));
 ok("R6 tout ecart > 10 % est documente",nonDoc.length===0);
 ''')
 # R7 minimum de repas par régime
 build('R7',NEUTRE,'''
 var REG={"vegetarien":["viande","poisson","crustaces","mollusques"],"vegetalien":["viande","poisson","crustaces","mollusques","oeufs","lait","miel"],"pescetarien":["viande"],"sans gluten":["gluten"],"sans lactose":["lactose"],"sans lait":["lait"],"sans oeufs":["oeufs"],"sans arachide ni fruits a coque":["arachide","fruits_coque"]};
 Object.keys(REG).forEach(function(k){var c=compte(S4Repas.compatibles(profilAvec(REG[k])));ok("R7 "+k+": "+c.pd+" pdj / "+c.pl+" repas / "+c.co+" collations (min 2/3/2)",c.pd>=2&&c.pl>=3&&c.co>=2);});
-var c=compte(REPAS.map(function(r){return r.id}));L("R7 total par moment",c.pd+" / "+c.pl+" / "+c.co);ok("R7 36 a 45 repas",REPAS.length>=36&&REPAS.length<=45);
+var c=compte(REPAS.map(function(r){return r.id}));L("R7 total par moment",c.pd+" / "+c.pl+" / "+c.co);ok("R7 entre 36 et 50 repas (47 : 2 ajouts v33 pour crustaces et vegetalien sans gluten)",REPAS.length>=36&&REPAS.length<=50);
 ''')
 # R8 trop d'exclusions : message explicite, aucun repas exclu servi, rien d'exclu dans Tous les repas
 TROP=["viande","poisson","crustaces","mollusques","oeufs","lait","gluten","soja","arachide","fruits_coque","sesame","sulfites"]
@@ -158,12 +160,14 @@ location.hash="#/profil";await sleep(250);var s=document.getElementById("aliment
 ok("R10 section Alimentation avec 17 cases etiquetees",document.querySelectorAll("[data-alim-ex]").length===17&&[].every.call(document.querySelectorAll("[data-alim-ex]"),function(c){return c.closest("label")&&c.closest("label").textContent.trim().length>3}));
 ok("R10 cases groupees (fieldset + legend)",s.querySelectorAll("fieldset legend").length>=2);
 ok("R10 aide lactose: ne convient pas a une allergie au lait",/Ne convient pas à une allergie au lait/.test(t)&&document.querySelector('[data-alim-ex="lactose"]').getAttribute("aria-describedby")==="aide-lactose");
-ok("R10 texte de limites present dans la section",/Ce n'est pas une garantie contre les allergies : traces, produits transformés et sauces non listés ne sont pas couverts\\. Vérifie toujours les étiquettes\\. Valeurs nutritionnelles approximatives \\(d'après CIQUAL\\), pas un avis médical ni diététique\\./.test(t));
+ok("R10 texte de limites present dans la section",t.indexOf("Ce n'est pas une garantie contre les allergies : traces, produits transformés et sauces non listés ne sont pas couverts. Vérifie toujours les étiquettes.")!==-1&&t.indexOf("Valeurs d'après la table ANSES-CIQUAL 2025 (aliments génériques, pour 100 g), calculées sur les grammes indiqués ; les poids d'unité sont des repères ; les recettes ne sont pas validées par un professionnel de santé.")!==-1);
+ok("R10 plus aucune mention de valeurs approximatives ou d'ordre de grandeur",!/approximati|ordre de grandeur/i.test(document.body.innerText));
 ok("R10 jamais presentee comme sure pour les allergies",!/sans risque|garanti sans|sûr pour les allerg|adapté aux allergiques/i.test(document.body.innerText));
-var c0=document.getElementById("alim-compte").textContent;ok("R10 compteur initial",/^45 repas compatibles sur 45/.test(c0));
+var c0=document.getElementById("alim-compte").textContent;ok("R10 compteur initial",c0.indexOf(REPAS.length+" repas compatibles sur "+REPAS.length)===0);
 cocher("#alim-regime","vegetalien");await sleep(100);var p=PROF();
 ok("R10 raccourci vegetalien coche viande, poisson, crustaces, mollusques, oeufs, lait, miel",same(p.alimentation.exclus.slice().sort(),["crustaces","lait","miel","mollusques","oeufs","poisson","viande"])&&document.querySelector('[data-alim-ex="miel"]').checked);
-var c1=document.getElementById("alim-compte").textContent;ok("R10 compteur mis a jour en direct ("+c1+")",c1!==c0&&/^14 repas compatibles/.test(c1));
+var nVeg=S4Repas.compatibles(profilAvec(["viande","poisson","crustaces","mollusques","oeufs","lait","miel"])).length;
+var c1=document.getElementById("alim-compte").textContent;ok("R10 compteur mis a jour en direct ("+c1+")",c1!==c0&&c1.indexOf(nVeg+" repas compatibles")===0);
 cocher('[data-alim-ex="miel"]',false);await sleep(100);p=PROF();
 ok("R10 decocher une case: modifiable, raccourci retire",p.alimentation.exclus.indexOf("miel")===-1&&p.alimentation.regime===""&&document.getElementById("alim-regime").value==="");
 cocher('[data-alim-aime="tofu"]',true);await sleep(50);cocher('[data-alim-pas="tofu"]',true);await sleep(100);p=PROF();
@@ -183,5 +187,18 @@ ok("R11 aime: tire plus souvent",plus>base);ok("R11 pas aime: tire moins souvent
 var m3=0;for(var k=0;k<5;k++)m3+=freq(profilAvec([],[],["saumon"]),"d2");
 ok("R11 pas aime: jamais bloque ("+m3+" fois sur 3000)",m3>0);
 ''')
+# R12 chaque ingrédient sourcé ANSES-CIQUAL 2025 : code, libellé, kcal (Énergie UE 1169) et protéines (N x Jones) = tableau
+CIQ={"flocons-avoine": [32140, 369.0, 10.6, "Flocons d'avoine"], "muesli": [32004, 433.0, 8.87, "Muesli (aliment moyen)"], "pain-complet": [7110, 234.0, 8.66, "Pain complet ou intégral (à la farine T150)"], "pain-sans-gluten": [7130, 249.0, 4.58, "Pain sans gluten, préemballé"], "galettes-riz": [7352, 381.0, 8.39, "Galette de riz complet soufflé"], "tortilla-ble": [7815, 320.0, 8.01, "Tortilla souple (à garnir), à base de blé"], "riz": [9100, 350.0, 7.02, "Riz blanc, cru"], "quinoa": [9340, 358.0, 13.2, "Quinoa, cru"], "pates-completes": [9870, 353.0, 11.8, "Pâtes sèches, au blé complet, crues"], "semoule": [9610, 350.0, 11.8, "Semoule de blé dur, crue"], "pomme-de-terre": [4008, 80.0, 2.02, "Pomme de terre, sans peau, crue"], "patate-douce": [4101, 81.2, 1.57, "Patate douce, crue"], "poulet": [36007, 122.0, 20.8, "Poulet blanc, viande et peau crues"], "dinde": [36304, 108.0, 23.7, "Dinde, escalope crue"], "boeuf-hache": [6250, 130.0, 21.9, "Boeuf, steak haché 5% MG cru"], "filet-porc": [28204, 123.0, 21.2, "Porc, filet mignon cru"], "jambon": [28900, 113.0, 21.0, "Jambon cuit, supérieur"], "saumon": [26036, 193.0, 20.5, "Saumon, élevage, cru"], "cabillaud": [26043, 77.4, 18.1, "Cabillaud, cru"], "thon": [26039, 143.0, 26.8, "Thon, au naturel, appertisé, égoutté"], "sardines": [26034, 217.0, 23.3, "Sardine, à l'huile, appertisée, égouttée"], "crevettes": [10007, 91.3, 20.5, "Crevette, cuite"], "moules": [10013, 108.0, 17.2, "Moule, bouillie/cuite à l'eau"], "calamar": [10001, 77.0, 14.4, "Calmar ou calamar ou encornet, cru"], "oeuf": [22000, 140.0, 12.8, "Oeuf cru"], "lait": [19042, 46.4, 3.19, "Lait demi-écrémé, pasteurisé"], "lait-sans-lactose": [19060, 44.4, 3.45, "Lait demi-écrémé (ou à teneur en matière grasse légèrement inférieure)"], "fromage-blanc": [19646, 75.7, 7.28, "Fromage blanc, nature, 2-3% MG"], "yaourt-grec": [19860, 103.0, 3.02, "Yaourt à la grecque nature"], "emmental": [12115, 373.0, 27.9, "Emmental ou emmenthal"], "mozzarella": [19590, 227.0, 16.5, "Mozzarella au lait de vache"], "feta": [12060, 273.0, 15.4, "Fromage type feta, au lait de vache 100%"], "beurre": [16400, 753.0, 0.64, "Beurre à 80% MG minimum, doux"], "lentilles": [20585, 327.0, 25.1, "Lentille verte, sèche"], "haricots-rouges": [20503, 116.0, 9.63, "Haricot rouge, bouilli/cuit à l'eau"], "pois-chiches": [20507, 148.0, 8.31, "Pois chiche, bouilli/cuit à l'eau"], "petits-pois": [20326, 80.7, 6.38, "Petits pois, bouillis/cuits à l'eau"], "tofu": [20904, 147.0, 13.4, "Tofu nature, préemballé"], "tempeh": [20917, 157.0, 16.1, "Tempeh"], "boisson-soja": [18900, 42.4, 3.19, "Boisson au soja, nature, non enrichie, préemballée"], "houmous": [25621, 258.0, 8.06, "Houmous, préemballé"], "beurre-cacahuete": [15202, 643.0, 22.2, "Beurre de cacahuète ou pâte d'arachide"], "amandes": [15000, 615.0, 18.8, "Amande, avec peau, sans sel ajouté"], "noix": [15005, 709.0, 13.3, "Noix, cerneau, séchée"], "noix-cajou": [15054, 618.0, 17.4, "Noix de cajou, grillée, sans sel ajouté"], "graines-courge": [15064, 618.0, 29.5, "Courge, graine, séchée"], "banane": [13005, 87.6, 1.06, "Banane, chair sans peau, crue"], "pomme": [13039, 54.0, 0.25, "Pomme, chair et peau, crue"], "orange": [13034, 42.0, 0.75, "Orange, chair sans peau, sans pépins, crue"], "fruits-rouges": [13015, 47.9, 1.19, "Framboise, crue"], "avocat": [13004, 203.0, 1.56, "Avocat, chair sans peau, sans noyau, cru"], "raisins-secs": [13046, 322.0, 3.0, "Raisin sec"], "brocolis": [20057, 31.9, 2.9, "Brocoli, cru"], "haricots-verts": [20061, 31.9, 1.83, "Haricot vert, cru"], "epinards": [20059, 33.3, 2.68, "Épinard, cru"], "carottes": [20009, 30.2, 0.78, "Carotte, crue"], "poivron": [20041, 22.6, 0.8, "Poivron, vert, jaune ou rouge, cru"], "tomate": [20276, 17.5, 0.5, "Tomate ronde, crue"], "concombre": [20019, 16.8, 0.65, "Concombre, chair et peau, cru"], "salade": [20031, 14.7, 1.35, "Laitue, crue"], "oignon": [20034, 39.0, 1.1, "Oignon, cru"], "celeri": [20023, 15.4, 0.63, "Céleri branche, cru"], "mais": [20066, 105.0, 2.66, "Maïs doux, appertisé, égoutté"], "huile-olive": [17270, 899.0, 0.25, "Huile d'olive vierge extra"], "sauce-tomate": [20260, 45.5, 2.05, "Tomate, coulis, appertisé (purée de tomates mi-réduite à 11%)"], "sauce-soja": [11104, 39.9, 7.25, "Sauce soja, préemballée"], "vinaigrette": [11110, 475.0, 0.55, "Sauce vinaigrette (50 à 75% d'huile), préemballée"], "vin-blanc": [5215, 55.3, 0.25, "Vin blanc sec"], "miel": [31008, 331.0, 0.65, "Miel"], "courgette": [20020, 16.7, 1.21, "Courgette, chair et peau, crue"], "aubergine": [20053, 22.9, 0.98, "Aubergine, crue"]}
+build('R12',NEUTRE,'''
+var CIQ=%s,ids=ALIMENTS.map(function(a){return a.id}),manque=[],faux=[];
+ok("R12 "+ALIMENTS.length+" ingredients = les "+Object.keys(CIQ).length+" lignes du tableau",same(ids.slice().sort(),Object.keys(CIQ).sort()));
+ALIMENTS.forEach(function(a){var c=CIQ[a.id];if(!c||!a.ciqual||!a.ciqualNom){manque.push(a.id);return;}if(a.ciqual!==c[0]||a.kcal!==c[1]||a.prot!==c[2]||a.ciqualNom!==c[3])faux.push(a.id);});
+ok("R12 code CIQUAL present pour chaque ingredient ("+(manque.join(",")||"aucun manquant")+")",manque.length===0);
+ok("R12 code, libelle, kcal et proteines egaux au tableau ("+(faux.join(",")||"aucun ecart")+")",faux.length===0);
+ok("R12 aucun ingredient marque approx",ALIMENTS.every(function(a){return !a.approx}));
+ok("R12 skyr, edamame, legumes grilles retires de tous les repas",!REPAS.some(function(r){return r.ingr.some(function(x){return ["skyr","edamame","legumes-grilles"].indexOf(x.id)!==-1})}));
+ok("R12 lait a teneur reduite en lactose: tag lait seulement",same(ALIMENTS.filter(function(a){return a.id==="lait-sans-lactose"})[0].tags,["lait"]));
+ok("R12 poids d'unite affiches comme reperes (environ)",/165 g d'œuf \\(cru, environ 3 œufs\\)/.test(R_("p2").detail));
+''' % json.dumps(CIQ))
 # ===== runr.sh
 # R=$1; shift; for n in "$@"; do echo "== $n"; google-chrome --headless=new --no-sandbox --disable-gpu --window-size=360,640 --virtual-time-budget=150000 --dump-dom file://$R/site/_r_$n.html 2>/dev/null | grep -o 'data-log="[^"]*"' | sed 's/ || /\n  /g;s/data-log="/  /;s/"$//'; done

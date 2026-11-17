@@ -527,7 +527,7 @@
   }
   // Ids de repas encore valables (connus et compatibles avec les exclusions actuelles) ?
   function idsValides(ids, p) { return Array.isArray(ids) && ids.every(function (id) { var r = repasParId(id); return !!r && repasOk(r, p); }); }
-  var LIMITES_ALIM = "Les exclusions filtrent des suggestions indicatives d'après les ingrédients listés. Ce n'est pas une garantie contre les allergies : traces, produits transformés et sauces non listés ne sont pas couverts. Vérifie toujours les étiquettes. Valeurs nutritionnelles approximatives (d'après CIQUAL), pas un avis médical ni diététique.";
+  var LIMITES_ALIM = "Les exclusions filtrent des suggestions indicatives d'après les ingrédients listés. Ce n'est pas une garantie contre les allergies : traces, produits transformés et sauces non listés ne sont pas couverts. Vérifie toujours les étiquettes. Valeurs d'après la table ANSES-CIQUAL 2025 (aliments génériques, pour 100 g), calculées sur les grammes indiqués ; les poids d'unité sont des repères ; les recettes ne sont pas validées par un professionnel de santé. Pas un avis médical ni diététique.";
   function nomsExclus(p) { return alim(p).exclus.map(function (c) { var x = (window.ALIM_EXCLUSIONS || []).filter(function (e) { return e.code === c; })[0]; return x ? x.nom.split(" (")[0].split(" :")[0] : c; }); }
   function pluriel(n, s, pl) { return n + " " + (n > 1 ? pl : s); }
   function texteCompte(p) {
@@ -815,7 +815,7 @@
     } else {
       h += "<p>Renseigne ta taille, ton poids, ton âge et ton sexe dans le <a href=\"#/profil\">profil</a> pour estimer tes besoins.</p>";
     }
-    h += '<div class="alerte">Estimation indicative, pas un avis médical. Valeurs nutritionnelles des repas : approximatives, d\'après la table CIQUAL (ANSES).</div></div>';
+    h += '<div class="alerte">Estimation indicative, pas un avis médical. Valeurs d\'après la table ANSES-CIQUAL 2025 (aliments génériques, pour 100 g), calculées sur les grammes indiqués ; les poids d\'unité sont des repères ; les recettes ne sont pas validées par un professionnel de santé.</div></div>';
     vue.innerHTML = h;
   }
 
@@ -1005,7 +1005,7 @@
     h += '<div class="carte verre"><h3>Données</h3><p class="doux">Tes données restent dans ce navigateur, sur cet appareil. Elles ne sont envoyées nulle part. Vider le navigateur les efface.</p><button class="danger" data-supprimer="1">Supprimer ce profil</button></div>';
     h += blocRappel();
     h += blocTransfert();
-    h += '<div class="alerte">Sport4Life donne des conseils généraux, pas un avis médical. Sources : recommandations OMS 2020 sur l\'activité physique, littérature scientifique sur l\'hypertrophie, table CIQUAL/ANSES pour les repas (valeurs approximatives).</div>';
+    h += '<div class="alerte">Sport4Life donne des conseils généraux, pas un avis médical. Sources : recommandations OMS 2020 sur l\'activité physique, littérature scientifique sur l\'hypertrophie, table ANSES-CIQUAL 2025 pour les repas.</div>';
     vue.innerHTML = h;
   }
 

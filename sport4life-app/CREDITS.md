@@ -55,5 +55,5 @@ v22 : photos des échauffements et étirements (Pexels, 400 x 300). Tima Miroshn
 
 ## v33 (repas et préférences alimentaires)
 
-- Valeurs nutritionnelles des ingrédients (data/foods.js) : ordres de grandeur inspirés de la table de composition CIQUAL (ANSES, https://ciqual.anses.fr). Valeurs approximatives et arrondies, non vérifiées ligne à ligne ; les ingrédients les plus incertains sont marqués « approx ». Les kcal et protéines des repas sont calculées à partir de ces valeurs.
+- Valeurs nutritionnelles des ingrédients (data/foods.js) : table de composition ANSES-CIQUAL 2025 (https://ciqual.anses.fr ; fichier publié sur entrepot.recherche.data.gouv.fr, doi 10.57745/RPWYZD), aliments génériques, valeurs pour 100 g, avec le code et le libellé CIQUAL de chaque ingrédient. Les kcal et protéines des repas sont calculées sur les grammes indiqués. Les tags allergènes et les poids d'unité (repères) ne proviennent pas de CIQUAL.
 - Recettes des repas rédigées pour Sport4Life. Aucune photo ni illustration ajoutée.

@@ -11,5 +11,5 @@ Web app statique de suivi sportif et nutritionnel pour la prise de masse. HTML, 
 - Style Liquid Glass en CSS
 
 Les données restent dans le navigateur. Conseils généraux, pas un avis médical.
-Les exclusions alimentaires filtrent des suggestions indicatives d'après les ingrédients listés : ce n'est pas une garantie contre les allergies (traces, produits transformés et sauces non listés ne sont pas couverts). Valeurs nutritionnelles approximatives, d'après la table CIQUAL (ANSES).
+Les exclusions alimentaires filtrent des suggestions indicatives d'après les ingrédients listés : ce n'est pas une garantie contre les allergies (traces, produits transformés et sauces non listés ne sont pas couverts). Valeurs d'après la table ANSES-CIQUAL 2025 (aliments génériques, pour 100 g), calculées sur les grammes indiqués ; les poids d'unité sont des repères ; les recettes ne sont pas validées par un professionnel de santé.
 Chaque fiche exercice affiche le schéma des muscles travaillés (voir CREDITS.md).
