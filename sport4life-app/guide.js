@@ -9,7 +9,7 @@
   var enPause = false, reprise = null, coupe = null;
   var ctx = null, verrou = null, progres = "";
   var ses = null, sautVal = null, attenteTap = null, ajout = 0;
-  var cfg = { voix: true, bip: true, tempo: 3, p: {}, repos: 0, trans: 30, auto: false };
+  var cfg = { voix: true, bip: true, tempo: 3, p: {}, repos: 0, trans: 30, auto: false, ech: true };
   try { var s = JSON.parse(localStorage.getItem(CLE) || "{}"); Object.keys(s).forEach(function (k) { if (k in cfg) cfg[k] = s[k]; }); } catch (e) {}
   function sauver() { try { localStorage.setItem(CLE, JSON.stringify(cfg)); } catch (e) {} }
   function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
@@ -81,14 +81,16 @@
           var u = new SpeechSynthesisUtterance(texte); u.lang = "fr-FR"; u.rate = 1;
           u.onstart = function () { dem = Date.now() + texte.length * 110; };
           u.onboundary = function () { dem = Date.now(); };
-          u.onend = function () { res("ok"); }; u.onerror = function () { rej(); };
+          u.onend = function () { res("ok"); }; u.onerror = function (ev) { if (ev && (ev.error === "interrupted" || ev.error === "canceled")) res("coupe"); else rej(); };
           window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
         });
       }, function () { return dem; });
     }
     return Promise.resolve("aucune");
   }
+  var coupeA = 0;
   function tais() {
+    coupeA = Date.now();
     var p = plugin();
     try { if (p) p.stop(); } catch (e) {}
     try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
@@ -129,9 +131,10 @@
     return new Promise(function (resolve) {
       (function essai() {
         if (j !== jeton) return resolve(false);
+        if (sautVal === "exo") return resolve(true);
         if (enPause) { attendreReprise(j).then(function (ok) { if (ok) essai(); else resolve(false); }); return; }
         var fini = false;
-        parle(texte).then(function (r) { fini = true; if (j === jeton && !enPause && (r === "delai" || r === "erreur" || r === "aucune")) { voixMuette = true; tais(); msg("Voix sans réponse : bips seulement pour cette séance."); } if (j !== jeton) return resolve(false); if (enPause) { essai(); return; } resolve(true); });
+        parle(texte).then(function (r) { fini = true; if (j === jeton && !enPause && (r === "delai" || r === "aucune" || (r === "erreur" && Date.now() - coupeA > 1500))) { voixMuette = true; tais(); msg("Voix sans réponse : bips seulement pour cette séance."); } if (j !== jeton) return resolve(false); if (enPause) { essai(); return; } resolve(true); });
         coupe = function () { if (!fini) resolve(false); };
       })();
     });
@@ -210,8 +213,8 @@
     if (j === jeton) { etat = "repos"; msg(""); majEcran(); }
   }
   function pause() {
-    if (etat === "marche") { etat = "pause"; enPause = true; tais(); msg("En pause."); majEcran(); if (ses) { ses.msg = "En pause."; renderSes(); } }
-    else if (etat === "pause") { etat = "marche"; enPause = false; msg("Reprise."); majEcran(); if (ses) { ses.msg = ""; renderSes(); } if (reprise) { var r = reprise; reprise = null; r(); } }
+    if (etat === "marche") { etat = "pause"; enPause = true; tais(); marquePause(true); msg("En pause."); if (ses) { ses.t0 = ses.tp = Date.now(); if (ses.msgAvant == null) ses.msgAvant = ses.msg; ses.msg = "En pause. Appuie sur Reprendre pour continuer."; } majEcran(); }
+    else if (etat === "pause") { etat = "marche"; enPause = false; marquePause(false); msg("Reprise."); if (ses) { ses.t0 = ses.tp = Date.now(); ses.cs = 0; ses.msg = ses.msgAvant != null ? ses.msgAvant : ""; ses.msgAvant = null; demander(); } majEcran(); if (reprise) { var r = reprise; reprise = null; r(); } }
   }
   function arret() { stopTout(); etat = "repos"; msg("Arrêté."); fermerSes(); majEcran(); }
 
@@ -236,33 +239,55 @@
     return h;
   }
 
+  // ---------- Événements ----------
+  // Protection contre les doubles appuis : juste après un changement d'écran (phase, pause), certains appuis sont ignorés.
+  function tropTot(ms) { return !!(ses && ses.t0 && Date.now() - ses.t0 < ms); }
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest && ev.target.closest("button[data-guide]");
     if (!t) return;
     var a = t.getAttribute("data-guide");
-    if (a === "start") lancer(); else if (a === "read") ecouter(); else if (a === "pause") pause(); else if (a === "stop") arret();
+    if (a === "start") lancer(); else if (a === "read") ecouter(); else if (a === "stop") arret();
+    else if (a === "pause") { if (!(ses && ses.tp && Date.now() - ses.tp < 400)) pause(); }
     else if (a === "seance-jour" || a === "seance-alea") ouvrirSes(a === "seance-jour" ? "jour" : "alea");
     else if (a === "sess-begin") commencerSes(); else if (a === "sess-close") { arret(); fermerSes(); }
-    else if ((a === "sess-go" || a === "sess-skip") && ses && ses.t0 && Date.now() - ses.t0 < 700) { /* appui trop proche d'un changement d'écran : ignoré */ }
+    else if (a === "sess-stop") demandeArret();
+    else if (a === "sess-etir") lancerEtir();
+    else if (a === "sess-etir-fin") finEtir();
+    else if (a === "sess-valider") validerFaits();
+    else if ((a === "sess-go" || a === "sess-skip" || a === "sess-exo") && tropTot(700)) { /* appui trop proche d'un changement d'écran : ignoré */ }
     else if (a === "sess-go") { tais(); if (attenteTap) { var r = attenteTap; attenteTap = null; r(); } }
-    else if (a === "sess-plus") { ajout += 15; }
+    else if (a === "sess-plus") { if (ses && /^\d+$/.test(ses.big)) maj(String(parseInt(ses.big, 10) + 15)); ajout += 15; }
     else if (a === "sess-skip") { sautVal = "compte"; if (ses && ses.phase === "serie") sautVal = "serie"; tais(); }
     else if (a.indexOf("tab-") === 0) { if (ses) { var tb = a.slice(4); ses.tab = tb === "none" || ses.tab === tb ? null : tb; renderSes(); } }
-    else if (a === "sess-exo") { sautVal = "exo"; tais(); if (attenteTap) { var r2 = attenteTap; attenteTap = null; r2(); } if (reprise) { var r3 = reprise; reprise = null; enPause = false; etat = "marche"; r3(); } }
+    else if (a === "sess-exo") { sautVal = "exo"; tais(); if (etat === "pause") { etat = "marche"; enPause = false; marquePause(false); if (ses) ses.msgAvant = null; } if (attenteTap) { var r2 = attenteTap; attenteTap = null; r2(); } if (reprise) { var r3 = reprise; reprise = null; r3(); } }
   });
   document.addEventListener("change", function (ev) {
     var t = ev.target, k = t.getAttribute && t.getAttribute("data-guide-cfg");
     if (!k) return;
-    if (k === "voix" || k === "bip" || k === "auto") cfg[k] = !!t.checked;
+    if (k === "voix" || k === "bip" || k === "auto" || k === "ech") cfg[k] = !!t.checked;
     else if (k === "reps" || k === "duree") { var m = parseInt(t.value, 10); if (m > 0 && cur) { cfg.p = cfg.p || {}; cfg.p[cur.id] = cfg.p[cur.id] || {}; cfg.p[cur.id][k] = m; } }
     else { var n = parseInt(t.value, 10); if (n > 0 || (k === "repos" && n === 0)) cfg[k] = n; }
     sauver();
+    if (ses && ses.phase === "config") majEstim();
   });
-  window.addEventListener("hashchange", function () { if (etat !== "repos") { stopTout(); etat = "repos"; progres = ""; } fermerSes(); });
+  window.addEventListener("hashchange", function () { if (etat !== "repos") { stopTout(); etat = "repos"; progres = ""; } fermerSes(true); });
+  // Bouton retour d'Android (ou du navigateur) : il ferme l'écran de lancement ou le bilan, mais ne coupe jamais une
+  // séance en cours d'un seul appui : il la met en pause et demande une confirmation (2e appui dans les 4 secondes).
+  window.addEventListener("popstate", function () {
+    if (!ses) return;
+    if (ses.phase === "config" || ses.phase === "fin") { fermerSes(true); return; }
+    try { history.pushState({ s4ses: 1 }, ""); } catch (e) {}
+    if (etat === "marche") pause();
+    demandeArret(true);
+  });
   // Écran éteint ou appli en arrière-plan : les minuteurs du navigateur ralentissent, on met en pause plutôt que de dérégler le rythme.
   document.addEventListener("visibilitychange", function () {
-    if (document.hidden && etat === "marche") { etat = "pause"; enPause = true; tais(); progres = "Mis en pause : l'écran s'est éteint ou l'appli est passée en arrière-plan."; }
-    else if (!document.hidden) majEcran();
+    if (document.hidden && etat === "marche") {
+      etat = "pause"; enPause = true; tais(); marquePause(true);
+      progres = "Mis en pause : l'écran s'est éteint ou l'appli est passée en arrière-plan.";
+      if (ses) { if (ses.msgAvant == null) ses.msgAvant = ses.msg; ses.msg = "Mis en pause : l'écran s'est éteint ou l'appli est passée en arrière-plan. Appuie sur Reprendre."; }
+    }
+    else if (!document.hidden) { majEcran(); if (ses && etat !== "repos") demander(); }
   });
 
 
@@ -279,33 +304,400 @@
   ANAT.src = {"pompes-lestees": "ExRx.net (Push-up) ; la charge du gilet ne change pas les muscles principaux.", "pompes-pieds-sureleves": "ExRx.net (Decline Push-up) : pectoral (haut), épaule avant, triceps.", "pompes-diamant": "ExRx.net (Close Grip Push-up) ; mains rapprochées : plus de triceps et de pectoral (Cogley, PMC4732391).", "dips-chaise": "ExRx.net (Bench Dip) : triceps, épaule avant, pectoral.", "developpe-halteres": "ExRx.net (Dumbbell Shoulder Press) : épaule, triceps.", "tractions": "ExRx.net (Pull-up) ; mesures EMG : grand dorsal, biceps, trapèze moyen, deltoïde arrière (PMC5548150).", "rowing-halteres": "ExRx.net (Dumbbell Bent-over Row) : dos, deltoïde arrière, biceps.", "curl-halteres": "ExRx.net (Dumbbell Curl) ; EMG : biceps et brachio-radial (PMID 36976950).", "superman": "ExRx.net (Superman) : lombaires (non colorés), fessiers et ischio-jambiers.", "squat": "ExRx.net (Squat) ; EMG du squat à vide : quadriceps, fessiers, ischio-jambiers, mollet (PMID 9107637).", "squat-lestes": "ExRx.net (Squat) ; EMG du squat à vide (PMID 9107637).", "fentes-bulgares": "ExRx.net (Single Leg Split Squat) ; EMG fente bulgare : fessier, érecteurs, biceps fémoral (PMC12382192).", "pont-fessier": "EMG des ponts (Lehecka, PMC5534144) : grand fessier, moyen fessier, ischio-jambiers.", "planche": "ExRx.net (Front Plank) ; EMG : droit de l'abdomen, oblique externe (PMC8964357, PMID 28157133).", "ab-wheel": "EMG de la roue abdominale (Escamilla 2006, PMID 16649890) : abdominaux, obliques, grand dorsal.", "rotation-medball": "ExRx.net (fonction : rotation du tronc) ; EMG du lancer latéral de medecine-ball (PMID 19826303) : oblique externe. Aucune étude EMG du Russian twist trouvée : seuls les obliques sont colorés.", "corde": "ExRx.net (Jump Rope) : mollet, cuisse ; EMG (PMID 41295793).", "rowing-elastique": "ExRx.net (Cable Seated Row), même geste avec un élastique : dos, deltoïde arrière, biceps.", "developpe-epaules-elastique": "ExRx.net (Dumbbell Shoulder Press), même geste avec un élastique.", "tirage-vertical-elastique": "ExRx.net (Cable Pulldown), même geste avec un élastique : grand dorsal, biceps, deltoïde arrière.", "pompes-elastique": "ExRx.net (Push-up) ; l'élastique ajoute de la résistance en haut.", "squat-disque": "ExRx.net (Squat et Kettlebell Goblet Squat) : extension de hanche et de genou, bas du dos maintenu en extension."};
   ANAT.dn = {"pompes-lestees": "Dessin : pompe sans charge. Le gilet lesté n'est pas dessiné.", "pompes-elastique": "Dessin : pompe classique. L'élastique n'est pas dessiné.", "curl-halteres": "Dessin : curl debout aux haltères, paumes vers l'avant.", "pont-fessier": "Dessin : pont au sol, pieds à plat, bassin levé.", "developpe-halteres": "Dessin : assis sur un banc. Tu peux aussi le faire debout, ce sont les mêmes muscles."};
   var ALIAS = {};
+  // ---------- Séance guidée v31 : lancement, phases, bilan, étirements ----------
+  // Contenu de l'échauffement et des étirements : fourni par app.js (window.S4App), mêmes listes que la page d'accueil.
+  function app() { return window.S4App || null; }
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function mmss(ms) { var s = Math.floor(ms / 1000), m = Math.floor(s / 60); s %= 60; return m >= 60 ? Math.floor(m / 60) + ":" + pad(m % 60) + ":" + pad(s) : m + ":" + pad(s); }
+  function minutes(sec) { return Math.max(1, Math.round(sec / 60)) + " min"; }
+  function parCote(e) { return cote(e) && !/\(\d+ par c/i.test(e.series || ""); }
+  function cible(e) { var v = valeur(e); return tenu(e) ? v + " s" + (cote(e) ? " par côté" : "") : v + " rép." + (cote(e) ? " par côté" : ""); }
+  function cibleVoix(e) { var v = valeur(e); return (tenu(e) ? v + " secondes" : v + " répétitions") + (cote(e) ? ", de chaque côté" : ""); }
+  // Estimation (ordre de grandeur) : mise en place + séries + repos + annonces.
+  function dureeSerie(e) { var v = valeur(e); return (tenu(e) ? v : v * (cfg.bip ? Math.max(1, cfg.tempo) : 3)) * (parCote(e) ? 2 : 1) + (cfg.voix ? 8 : 4); }
+  function dureeExo(e) { var n = nbSeries(e); return cfg.trans + n * dureeSerie(e) + (n - 1) * reposAuto(e) + (cfg.auto ? 0 : n * 3); }
+  function dureeListe(l) { return l.reduce(function (s, x) { return s + (x.d || 0) * (x.cotes ? 2 : 1); }, 0); }
+  function estimer(liste, avecEch) {
+    var t = (liste || []).reduce(function (s, e) { return s + dureeExo(e); }, 0);
+    if (avecEch && app() && app().echauffement) t += dureeListe(app().echauffement(liste));
+    return t;
+  }
+  function seriesTot(l) { return l.reduce(function (s, e) { return s + nbSeries(e); }, 0); }
+
+  // Miniatures : dessin du mouvement (fond clair, traits renforcés) ; sinon planche musculaire vue de face ou de dos.
+  var AVANT = ["pec", "delt", "biceps", "abs", "obliques", "quad"], cachePl = {};
+  function plancheImg(m, face) {
+    var cle = m.join(",") + (face ? "|f" : "|d");
+    if (cachePl[cle]) return cachePl[cle];
+    var st = "<style>path{fill:#d3d9e2;stroke:#a3adbb;stroke-width:.5}" + m.map(function (k) { return ".m-" + k; }).join(",") + "{fill:#2563eb;stroke:#1e3a8a}</style>";
+    var s = ANAT.svg.replace(/viewBox="[^"]*"/, (face ? 'viewBox="4 0 200 354"' : 'viewBox="204 0 200 354"') + ' width="200" height="354"').replace(/(<svg[^>]*>)/, "$1" + st);
+    var u = null;
+    try { if (window.Blob && window.URL && URL.createObjectURL) u = URL.createObjectURL(new Blob([s], { type: "image/svg+xml" })); } catch (x) { u = null; }
+    if (!u) u = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(s);
+    cachePl[cle] = u; return u;
+  }
+  function png(src) { return /^data:image\/png/.test(src) ? ' class="png"' : ""; }
+  var PORTRAIT = { "developpe-halteres": 1, "tractions": 1, "curl-halteres": 1 };
+  function vig(e) {
+    var d = drawOf(e), m = aMus(e);
+    if (d) return '<span class="vignette vig vig-d" aria-hidden="true"><img src="' + d[1] + '"' + png(d[1]) + ' alt="" width="64" height="64"></span>';
+    if (m) { var av = m.filter(function (k) { return AVANT.indexOf(k) !== -1; }).length; return '<span class="vignette vig vig-p" aria-hidden="true"><img src="' + plancheImg(m, av * 2 >= m.length) + '" alt="" width="64" height="64"></span>'; }
+    return '<span class="vignette vig vig-t" aria-hidden="true">' + esc((e.groupe || "?").slice(0, 2)) + "</span>";
+  }
+  // Grande illustration pendant la séance (un appui ouvre le volet de détail).
+  function illu(e) {
+    var d = drawOf(e);
+    if (d) return '<button class="gs-ill gs-ill-d' + (PORTRAIT[ALIAS[e.id] || e.id] ? " port" : "") + '" data-guide="tab-mouv" aria-label="Voir le mouvement en détail"><span class="gs-fr"><img src="' + d[0] + '"' + png(d[0]) + ' alt=""><i>Départ</i></span><span class="gs-arr" aria-hidden="true">›</span><span class="gs-fr"><img src="' + d[1] + '"' + png(d[1]) + ' alt=""><i>Arrivée</i></span></button>';
+    var m = aMus(e);
+    if (m) {
+      // Un seul côté concerné : on montre cette vue seule, en plus grand (le volet Muscles garde la planche complète).
+      var av = m.filter(function (k) { return AVANT.indexOf(k) !== -1; }).length, pl = S4L.plate(e);
+      if (av === m.length || av === 0) pl = pl.replace(/viewBox="[^"]*"/, av ? 'viewBox="4 0 200 354"' : 'viewBox="204 0 200 354"');
+      return '<button class="gs-ill gs-ill-p" data-guide="tab-mus" aria-label="Voir les muscles travaillés">' + pl + "<i>" + (av === m.length ? "Vue de face · " : av === 0 ? "Vue de dos · " : "") + esc(e.muscles || "") + "</i></button>";
+    }
+    return '<button class="gs-ill gs-ill-t" data-guide="tab-ste" aria-label="Voir les étapes"><b>' + esc(e.groupe || "") + "</b><span>Corps entier : pas de muscle mis en avant.</span><i>Appuie pour voir les étapes</i></button>";
+  }
+  function illuPas(s, n, tot, l) {
+    var h = '<div class="gs-ill gs-ill-e">', mus = s.mus || [];
+    if (s.img) h += '<span class="gs-ph"><img src="' + s.img + '" alt=""></span>';
+    if (mus.length) h += '<span class="gs-anat ' + mus.map(function (k) { return "on-" + k; }).join(" ") + '">' + ANAT.svg + "</span>";
+    if (!s.img && !mus.length) {
+      // Pas d'image : numéro de l'étape et aperçu des deux suivantes.
+      var nx = (l || []).slice(n, n + 2);
+      h += '<span class="gs-num"><span><b>' + n + "</b>/" + tot + "</span>" + (nx.length ? '<small>Ensuite</small><ul class="gs-steps">' + nx.map(function (x) { return "<li>" + esc(x.nom) + "</li>"; }).join("") + "</ul>" : "<small>Dernière étape</small>") + "</span>";
+    }
+    var cap = [];
+    if (mus.length) cap.push("Zone étirée, schéma indicatif (OpenStax, CC BY-SA 4.0)");
+    if (s.credit) cap.push("Photo : " + esc(s.credit) + " / Pexels");
+    return h + (cap.length ? "<i>" + cap.join(" · ") + "</i>" : "") + "</div>";
+  }
+
   function ouvrirSes(qui) {
     var l = sources[qui] ? sources[qui]() : [];
     if (!l || !l.length) { alert("Aucun exercice dans cette séance."); return; }
     stopTout(); etat = "repos";
-    ses = { liste: l, i: 0, phase: "config", label: "", sub: "", big: "", msg: "" };
+    var A = app();
+    ses = { qui: qui, liste: l, i: 0, k: 1, phase: "config", eye: "", label: "", sub: "", big: "", msg: "", u: "",
+      titre: sources[qui + "Titre"] ? sources[qui + "Titre"]() : (qui === "alea" ? "Séance aléatoire" : "Séance du jour"),
+      W: A && A.echauffement ? A.echauffement(l) : [], E: A && A.etirements ? A.etirements(l) : [] };
+    try { history.pushState({ s4ses: 1 }, ""); } catch (e) {}
     renderSes();
   }
-  function fermerSes() { ses = null; document.documentElement.style.overflow = ""; document.body.style.overflow = ""; var o = el("guide-ses"); if (o) o.parentNode.removeChild(o); }
+  var chronoIv = 0;
+  function fermerSes(depuisRetour) {
+    var avait = !!ses;
+    ses = null; clearInterval(chronoIv); chronoIv = 0;
+    document.documentElement.style.overflow = ""; document.body.style.overflow = "";
+    var o = el("guide-ses"); if (o) o.parentNode.removeChild(o);
+    if (avait && !depuisRetour) { try { if (history.state && history.state.s4ses) history.back(); } catch (e) {} }
+  }
   function opts(vals, cur, fmt) { return vals.map(function (v) { return '<option value="' + v + '"' + (cur === v ? " selected" : "") + ">" + fmt(v) + "</option>"; }).join(""); }
   function renderSes() {
     if (!ses) return;
     var o = el("guide-ses");
-    if (!o) { o = document.createElement("div"); o.id = "guide-ses"; o.className = "guide-ses"; o.setAttribute("role", "dialog"); o.setAttribute("aria-modal", "true"); o.setAttribute("aria-label", "Séance guidée"); document.body.appendChild(o); document.documentElement.style.overflow = "hidden"; document.body.style.overflow = "hidden"; }
-    var h = "<div class=\"guide-ses-in\"><h2>Séance guidée</h2>", ph = ses.phase;
-    if (ph === "config") {
-      h += '<p class="doux">' + ses.liste.length + " exercices : " + ses.liste.map(function (e) { return esc(e.nom); }).join(", ") + ".</p>";
-      h += '<p class="doux">La voix annonce chaque exercice, tu te places, puis tu lances chaque série toi-même. Entre les séries : un repos chronométré. Entre les exercices : une transition avec le nom du prochain mouvement et un temps pour te placer. Tu peux mettre en pause, passer ou arrêter à tout moment.</p>';
-      h += '<div class="puces"><label class="puce"><input type="checkbox" data-guide-cfg="voix"' + (cfg.voix ? " checked" : "") + '>Voix</label><label class="puce"><input type="checkbox" data-guide-cfg="bip"' + (cfg.bip ? " checked" : "") + ">Bips</label></div>";
-      h += '<label for="g-repos">Repos entre les séries</label><select id="g-repos" data-guide-cfg="repos"><option value="0"' + (cfg.repos ? "" : " selected") + ">Automatique (45 à 90 s selon l'exercice)</option>" + opts([30, 45, 60, 90, 120, 150, 180], cfg.repos, function (v) { return v + " secondes"; }) + "</select>";
-      h += '<label for="g-trans">Mise en place entre les exercices</label><select id="g-trans" data-guide-cfg="trans">' + opts([10, 15, 20, 30, 45, 60], cfg.trans, function (v) { return v + " secondes"; }) + "</select>";
-      h += '<label class="puce" style="margin-top:10px"><input type="checkbox" data-guide-cfg="auto"' + (cfg.auto ? " checked" : "") + ">Lancer la série tout seul après le repos (sinon j'appuie sur Démarrer)</label>";
-      h += '<p class="doux petit">Repères : environ 1 à 2 minutes de repos pour l\'entraînement général, 3 minutes ou plus pour les charges lourdes (ACSM 2009 ; Schoenfeld 2016). Pour tes charges légères, 45 à 90 secondes sont une valeur de départ : ajuste selon ta récupération. Cette séance guidée n\'enregistre rien : valide tes exercices comme d\'habitude.</p>';
-      h += '<p><button data-guide="sess-begin">Commencer la séance guidée</button> <button class="second" data-guide="sess-close">Fermer</button></p>';
-    } else {
-      return renderCompact(o, ph);
+    if (!o) { o = document.createElement("div"); o.id = "guide-ses"; o.setAttribute("role", "dialog"); o.setAttribute("aria-modal", "true"); o.setAttribute("aria-label", "Séance guidée"); document.body.appendChild(o); document.documentElement.style.overflow = "hidden"; document.body.style.overflow = "hidden"; }
+    o.className = "guide-ses gsx";
+    if (ses.phase === "config") renderConfig(o);
+    else if (ses.phase === "fin") renderFin(o);
+    else renderRun(o, ses.phase);
+  }
+
+  // ----- Écran de lancement -----
+  function txtReglages() {
+    return [cfg.voix ? "Voix" : "Sans voix", cfg.bip ? "Bips" : "Sans bips", cfg.repos ? "Repos " + cfg.repos + " s" : "Repos auto", "Mise en place " + cfg.trans + " s"].join(" · ");
+  }
+  function ligneExo(e) { return nbSeries(e) + " × " + cible(e) + " · repos " + reposAuto(e) + " s"; }
+  function majEstim() {
+    if (!ses || ses.phase !== "config") return;
+    var t = estimer(ses.liste, cfg.ech && ses.W.length > 0), a = el("gs-est"), b = el("gs-est2"), r = el("gs-reg-txt"), w = el("gs-w");
+    if (a) a.textContent = "≈ " + minutes(t);
+    if (b) b.textContent = "≈ " + minutes(t);
+    if (r) r.textContent = txtReglages();
+    if (w) w.classList.toggle("off", !cfg.ech);
+    ses.liste.forEach(function (e, i) { var s = el("gs-l" + i); if (s) s.textContent = ligneExo(e); });
+  }
+  function renderConfig(o) {
+    var L = ses.liste, ech = cfg.ech && ses.W.length > 0, t = estimer(L, ech);
+    var h = '<div class="guide-ses-in gs gs-cfg">';
+    h += '<div class="gs-cfg-top"><div><p class="gs-eye">Séance guidée</p><h2>' + esc(ses.titre) + '</h2></div><button class="gs-x" data-guide="sess-close" aria-label="Fermer">✕</button></div>';
+    h += '<div class="gs-stats"><div><b id="gs-est">≈ ' + minutes(t) + "</b><span>estimées</span></div><div><b>" + L.length + "</b><span>exercice" + (L.length > 1 ? "s" : "") + "</span></div><div><b>" + seriesTot(L) + "</b><span>séries</span></div></div>";
+    h += '<div class="gs-cfg-b">';
+    h += '<ol class="gs-plan">';
+    if (ses.W.length) h += '<li id="gs-w" class="gs-w' + (cfg.ech ? "" : " off") + '"><span class="vignette vig vig-t" aria-hidden="true">1</span><span class="gs-pl"><strong>Échauffement guidé</strong><small>' + ses.W.length + " mouvements · ≈ " + minutes(dureeListe(ses.W)) + '</small></span><label class="gs-sw"><input type="checkbox" data-guide-cfg="ech"' + (cfg.ech ? " checked" : "") + ' aria-label="Inclure l\'échauffement guidé"><i aria-hidden="true"></i></label></li>';
+    L.forEach(function (e, i) { h += "<li>" + vig(e) + '<span class="gs-pl"><strong>' + esc(e.nom) + '</strong><small id="gs-l' + i + '">' + esc(ligneExo(e)) + "</small></span></li>"; });
+    if (ses.E.length) h += '<li class="gs-w gs-w2"><span class="vignette vig vig-t" aria-hidden="true">✓</span><span class="gs-pl"><strong>Étirements guidés</strong><small>Proposés à la fin · ≈ ' + minutes(dureeListe(ses.E)) + "</small></span></li>";
+    h += "</ol>";
+    h += '<details class="gs-reg"' + (ses.regOpen ? " open" : "") + '><summary><strong>Réglages</strong><span id="gs-reg-txt">' + esc(txtReglages()) + "</span></summary>";
+    h += '<div class="puces"><label class="puce"><input type="checkbox" data-guide-cfg="voix"' + (cfg.voix ? " checked" : "") + '>Voix</label><label class="puce"><input type="checkbox" data-guide-cfg="bip"' + (cfg.bip ? " checked" : "") + ">Bips</label></div>";
+    h += '<label for="g-repos">Repos entre les séries</label><select id="g-repos" data-guide-cfg="repos"><option value="0"' + (cfg.repos ? "" : " selected") + ">Automatique (45 à 90 s selon l'exercice)</option>" + opts([30, 45, 60, 90, 120, 150, 180], cfg.repos, function (v) { return v + " secondes"; }) + "</select>";
+    h += '<label for="g-trans">Mise en place entre les exercices</label><select id="g-trans" data-guide-cfg="trans">' + opts([10, 15, 20, 30, 45, 60], cfg.trans, function (v) { return v + " secondes"; }) + "</select>";
+    h += '<label class="puce" style="margin-top:10px"><input type="checkbox" data-guide-cfg="auto"' + (cfg.auto ? " checked" : "") + ">Lancer la série tout seul après le repos (sinon j'appuie sur Démarrer)</label>";
+    h += '<p class="doux petit" style="margin-top:10px">Repères : environ 1 à 2 minutes de repos pour l\'entraînement général, 3 minutes ou plus pour les charges lourdes (ACSM 2009 ; Schoenfeld 2016). Pour tes charges légères, 45 à 90 secondes sont une valeur de départ : ajuste selon ta récupération.</p></details>';
+    h += '<p class="doux petit">La voix annonce chaque exercice et le suivant ; tout se pilote aussi aux boutons. Pause, passer ou arrêter à tout moment. À la fin, un bilan te propose de valider les exercices faits.</p><p class="doux petit">' + CRED + "</p>";
+    h += "</div>";
+    h += '<div class="gs-main"><button class="gs-prim" data-guide="sess-begin">Commencer <span class="gs-pm" id="gs-est2">≈ ' + minutes(t) + "</span></button></div></div>";
+    var vieux = o.querySelector(".gs-cfg-b"), sc = vieux ? vieux.scrollTop : 0;
+    o.innerHTML = h;
+    var nb = o.querySelector(".gs-cfg-b"); if (nb) nb.scrollTop = sc;
+    var d = o.querySelector("details.gs-reg"); if (d) d.addEventListener("toggle", function () { if (ses) ses.regOpen = d.open; });
+  }
+
+  // ----- Pendant la séance -----
+  var CIRC = 289.03;
+  function stopBtn() {
+    return ses.cs ? '<button class="gs-stop on" data-guide="sess-stop" aria-label="Confirmer l\'arrêt de la séance">Oui, arrêter</button>' : '<button class="gs-stop" data-guide="sess-stop" aria-label="Arrêter la séance">Arrêter</button>';
+  }
+  function progHtml() {
+    var ph = ses.phase, h = "";
+    if (ph === "ech" || ph === "etir") {
+      h = '<div class="gs-prog" role="progressbar" aria-label="Avancement" aria-valuemin="0" aria-valuemax="' + ses.sn + '" aria-valuenow="' + ses.si + '"><i><b style="width:' + Math.round(ses.si / ses.sn * 100) + '%"></b></i></div>';
+      return h;
     }
+    var L = ses.liste;
+    h = '<div class="gs-prog" role="progressbar" aria-label="Avancement de la séance" aria-valuemin="0" aria-valuemax="' + L.length + '" aria-valuenow="' + ses.i + '">';
+    L.forEach(function (e, k) {
+      var f = k < ses.i ? 1 : k > ses.i ? 0 : Math.max(0, ((ses.st.series[e.id] || 0) + (ph === "serie" ? 0.5 : 0)) / nbSeries(e));
+      h += '<i><b style="width:' + Math.round(Math.min(1, f) * 100) + '%"></b></i>';
+    });
+    return h + "</div>";
+  }
+  function boutonsRun(ph) {
+    var vide = '<span class="gs-vide" aria-hidden="true"></span>', dernier = ses.i >= ses.liste.length - 1;
+    var pb = '<button class="second" data-guide="pause">Pause</button>', plus = '<button class="second" data-guide="sess-plus">+ 15 s</button>';
+    var suiv = '<button class="second gs-faible" data-guide="sess-exo">' + (dernier ? "Finir la séance" : "Exercice suivant") + "</button>";
+    if (etat === "pause") return { prim: '<button class="gs-prim gs-rep" data-guide="pause">Reprendre</button>', sec: vide + vide + (ph === "etir" ? '<button class="second gs-faible" data-guide="sess-etir-fin">Terminer</button>' : ph === "ech" ? '<button class="second gs-faible" data-guide="sess-exo">Passer l\'échauffement</button>' : suiv) };
+    if (ph === "ech") return { prim: '<button class="gs-prim" data-guide="sess-skip">Suivant</button>', sec: pb + plus + '<button class="second gs-faible" data-guide="sess-exo">Passer l\'échauffement</button>' };
+    if (ph === "etir") return { prim: '<button class="gs-prim" data-guide="sess-skip">Suivant</button>', sec: pb + plus + '<button class="second gs-faible" data-guide="sess-etir-fin">Terminer</button>' };
+    if (ph === "place") return { prim: '<button class="gs-prim" data-guide="sess-skip">Je suis prêt</button>', sec: pb + plus + suiv };
+    if (ph === "repos") return { prim: '<button class="gs-prim" data-guide="sess-skip">Passer le repos</button>', sec: pb + plus + suiv };
+    if (ph === "attente") return { prim: '<button class="gs-prim" data-guide="sess-go">Démarrer la série</button>', sec: pb + vide + suiv };
+    return { prim: '<button class="gs-prim" data-guide="sess-skip">Série terminée</button>', sec: pb + vide + suiv };
+  }
+  function renderRun(o, ph) {
+    var e = ses.e, pz = etat === "pause", exo = ph !== "ech" && ph !== "etir";
+    if (ses.rph !== ph) { ses.rph = ph; ses.t0 = Date.now(); }
+    var h = '<div class="guide-ses-in gs ph-' + ph + (ses.tab && exo ? " open" : "") + (pz ? " paused" : "") + (ses.bientot ? " bientot" : "") + '">';
+    h += progHtml();
+    var chips = exo ? '<span class="gs-chip">Exercice ' + (ses.i + 1) + "/" + ses.liste.length + '</span><span class="gs-chip acc">Série ' + ses.k + "/" + nbSeries(e) + "</span>"
+      : '<span class="gs-chip acc">' + (ph === "ech" ? "Échauffement " : "Étirement ") + (ses.si + 1) + "/" + ses.sn + "</span>";
+    h += '<div class="gs-top' + (ses.cs ? " cs" : "") + '"><div class="gs-chips">' + chips + '</div><span class="gs-chrono" id="gs-chrono" title="Temps écoulé">' + mmss(ecoule()) + "</span>" + stopBtn() + "</div>";
+    h += '<div class="gs-head"><p class="gs-eye">' + esc(ses.eye) + "</p><h3>" + esc(ses.label) + "</h3>" + (ses.sub ? '<p class="gs-sub">' + esc(ses.sub) + "</p>" : "") + "</div>";
+    var f = ses.frac == null ? 1 : ses.frac, ouvert = !!(ses.tab && exo);
+    var mid = '<div class="gs-mid"><div class="gs-ring"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="gs-rt" cx="50" cy="50" r="46"/><circle class="gs-rp" id="ses-ring" cx="50" cy="50" r="46" stroke-dasharray="' + CIRC + '" stroke-dashoffset="' + (CIRC * (1 - f)).toFixed(1) + '"/></svg>';
+    mid += '<div class="gs-rin">' + (pz ? '<span class="gs-pz">En pause</span>' : "") + '<p class="guide-big" id="ses-big" aria-hidden="true">' + esc(ses.big) + '</p><p class="gs-unit" id="ses-unit">' + esc(ses.u) + "</p></div></div></div>";
+    var msgH = '<p id="ses-msg" role="status" aria-live="polite" class="gs-msg">' + esc(ses.msg) + "</p>";
+    if (ouvert) h += '<div class="gs-stage">' + mid + msgH + "</div>";
+    else h += '<div class="gs-stage">' + (exo ? illu(e) : (ses.ill || "")) + mid + "</div>" + msgH;
+    if (exo) {
+      if (ses.tab) h += feuille(e, ses.tab);
+      else h += '<div class="gs-tabs"><button class="gs-tab" data-guide="tab-mouv">Mouvement</button><button class="gs-tab" data-guide="tab-mus">Muscles</button><button class="gs-tab" data-guide="tab-ste">Étapes</button></div>';
+    }
+    var b = boutonsRun(ph);
+    h += '<div class="gs-sec">' + b.sec + '</div><div class="gs-main">' + b.prim + "</div>";
     o.innerHTML = h + "</div>";
+  }
+  function maj(big, msgTxt, frac) {
+    if (!ses) return;
+    if (big !== undefined) { ses.big = big; var b = el("ses-big"); if (b) b.textContent = big; }
+    if (msgTxt !== undefined) { ses.msg = msgTxt; var m = el("ses-msg"); if (m) m.textContent = msgTxt; }
+    if (frac !== undefined) { ses.frac = frac; var r = el("ses-ring"); if (r) r.setAttribute("stroke-dashoffset", (CIRC * (1 - (frac == null ? 1 : frac))).toFixed(1)); }
+  }
+  function unite(u) { if (!ses) return; ses.u = u; var x = el("ses-unit"); if (x) x.textContent = u; }
+  function bientot(on) { if (!ses || ses.bientot === on) return; ses.bientot = on; var g = document.querySelector("#guide-ses .gs"); if (g) g.classList.toggle("bientot", on); }
+  function ph(p, o) {
+    ses.phase = p; ses.eye = o.eye || ""; ses.label = o.label || ""; ses.sub = o.sub || ""; ses.big = o.big === undefined ? "" : o.big;
+    ses.msg = o.msg || ""; ses.msgAvant = null; if (sautVal === "compte" || sautVal === "serie") sautVal = null; ses.u = o.unit || ""; ses.ill = o.ill || ""; ses.frac = o.frac === undefined ? 1 : o.frac; ses.bientot = false; ajout = 0;
+    // Chaque nouvel écran réarme la protection double appui, même si la phase porte le même nom (mise en place -> mise en place).
+    ses.rph = p; ses.t0 = Date.now();
+    renderSes();
+  }
+  function ecoule() { var st = ses && ses.st; if (!st) return 0; var n = st.fin || Date.now(); return Math.max(0, n - st.debut - st.pauseMs - (st.pauseA ? n - st.pauseA : 0)); }
+  function marquePause(on) { var st = ses && ses.st; if (!st || st.fin) return; if (on && !st.pauseA) st.pauseA = Date.now(); else if (!on && st.pauseA) { st.pauseMs += Date.now() - st.pauseA; st.pauseA = 0; } }
+  function demandeArret(retour) {
+    if (!ses || ses.phase === "config" || ses.phase === "fin") return;
+    var now = Date.now();
+    if (ses.cs && now - ses.cs < 450) return;
+    if (ses.cs && now - ses.cs < 4000) { terminerSes(); return; }
+    ses.cs = now; renderSes();
+    if (retour) maj(undefined, "Retour : appuie encore une fois pour arrêter la séance, ou sur Reprendre pour continuer.");
+    setTimeout(function () { if (ses && ses.cs === now) { ses.cs = 0; renderSes(); } }, 4000);
+  }
+  function bilan(arrete) {
+    var st = ses.st; if (st.pauseA) { st.pauseMs += Date.now() - st.pauseA; st.pauseA = 0; } if (!st.fin) st.fin = Date.now();
+    etat = "repos"; enPause = false; liberer(); ses.cs = 0; ses.tab = null; ses.arrete = !!arrete;
+    ph("fin", { label: arrete ? "Séance arrêtée" : "Séance terminée", sub: arrete ? "Ce que tu as fait jusqu'ici :" : "Bravo, c'est dans la boîte.", msg: "" });
+  }
+  function terminerSes() {
+    if (!ses) return;
+    var dansEtir = ses.phase === "etir";
+    stopTout(); etat = "repos";
+    if (dansEtir) { finEtir(); return; }
+    if (!ses.st) { fermerSes(); return; }
+    bilan(true);
+  }
+  function renderFin(o) {
+    var st = ses.st, L = ses.liste, faits = L.filter(function (e) { return (st.series[e.id] || 0) > 0; });
+    var tot = L.reduce(function (s, e) { return s + (st.series[e.id] || 0); }, 0), A = app();
+    var h = '<div class="guide-ses-in gs gs-fin"><div class="gs-fin-b">';
+    h += '<div class="gs-badge' + (ses.arrete && !ses.calme ? " stop" : "") + '" aria-hidden="true">' + (ses.arrete && !ses.calme ? "■" : "✓") + "</div>";
+    var sous = ses.calme ? "Séance bouclée, étirements compris. Bien joué !" : !tot ? "Aucune série comptée cette fois." : ses.sub;
+    h += "<h2>" + esc(ses.calme ? "Retour au calme terminé" : ses.label) + '</h2><p class="doux">' + esc(sous) + "</p>";
+    h += '<div class="gs-stats"><div><b>' + mmss(ecoule()) + "</b><span>durée</span></div><div><b>" + faits.length + "/" + L.length + "</b><span>exercices</span></div><div><b>" + tot + "</b><span>séries</span></div></div>";
+    h += '<ul class="gs-recap">' + L.map(function (e) {
+      var n = st.series[e.id] || 0, N = nbSeries(e);
+      return "<li>" + vig(e) + '<span class="gs-pl"><strong>' + esc(e.nom) + "</strong><small>" + (n ? n + "/" + N + " série" + (N > 1 ? "s" : "") : "Pas fait") + "</small></span>" + (n >= N ? '<em class="ok" aria-label="Complet">✓</em>' : n ? '<em class="mi" aria-label="Partiel"><b style="width:' + Math.round(n / N * 100) + '%"></b></em>' : '<em class="non" aria-hidden="true">–</em>') + "</li>";
+    }).join("") + "</ul>";
+    h += '<p id="ses-msg" role="status" aria-live="polite" class="doux">' + esc(ses.msg) + "</p>";
+    h += '<p class="doux petit">' + CRED + (ses.E.length ? " Photos d'étirements : Pexels." : "") + "</p>";
+    if (!ses.calme && ses.E.length) h += '<p class="doux petit">Retour au calme conseillé : marche lente puis étirements doux, 15 à 20 secondes par côté, sans douleur.</p>';
+    h += '</div><div class="gs-fin-act">';
+    var val = A && A.valider && faits.length ? (ses.valide ? '<button class="second" disabled>Validé ✓</button>' : '<button class="second" data-guide="sess-valider">Valider ' + faits.length + " exercice" + (faits.length > 1 ? "s" : "") + "</button>") : "";
+    if (!ses.calme && ses.E.length) h += '<div class="gs-fin-row">' + val + '<button class="second" data-guide="sess-close">Fermer</button></div><button class="gs-prim" data-guide="sess-etir">Étirements guidés <span class="gs-pm">≈ ' + minutes(dureeListe(ses.E)) + "</span></button>";
+    else h += (val ? '<div class="gs-fin-row">' + val + "</div>" : "") + '<button class="gs-prim" data-guide="sess-close">Fermer</button>';
+    o.innerHTML = h + "</div></div>";
+  }
+  function validerFaits() {
+    var A = app(); if (!ses || ses.phase !== "fin" || !A || !A.valider || ses.valide) return;
+    var ids = ses.liste.filter(function (e) { return (ses.st.series[e.id] || 0) > 0; }).map(function (e) { return e.id; });
+    var ok = A.valider(ids);
+    ses.valide = !!ok;
+    ses.msg = ok ? "Exercices validés dans ta séance du jour." : "Enregistrement impossible : stockage plein ou bloqué. Valide-les depuis l'accueil.";
+    renderSes();
+  }
+
+  async function compte(sec, j) {
+    var reste = sec * 1000, tot = reste;
+    while (reste > 0) {
+      if (sautVal === "compte") { sautVal = null; break; }
+      chk(j);
+      if (ajout) { reste += ajout * 1000; tot += ajout * 1000; ajout = 0; }
+      maj(String(Math.ceil(reste / 1000)), undefined, reste / tot);
+      bientot(reste <= 5000 && tot > 6000);
+      if (cfg.bip && reste % 1000 === 0 && reste <= 3000) bip(660, 100);
+      if (!(await attendre(100, j))) throw new Saut("stop");
+      reste -= 100;
+    }
+    bientot(false); maj(undefined, undefined, 0);
+    chk(j);
+    if (cfg.bip) bip(1320, 250);
+  }
+  async function attendreAppui(j, e, k, n) {
+    if (cfg.auto) return;
+    ph("attente", { eye: "Série " + k + " sur " + n, label: e.nom, sub: "Objectif : " + cible(e), big: String(valeur(e)), unit: tenu(e) ? "secondes" : "répétitions", msg: "Appuie sur « Démarrer la série » quand tu es prêt." });
+    var p = new Promise(function (r) { attenteTap = r; });
+    await dire("Appuie sur Démarrer quand tu es prêt.", j); chk(j);
+    await p;
+    attenteTap = null; chk(j);
+  }
+  async function serieSes(e, k, n, j) {
+    var nb = valeur(e), t = tenu(e);
+    ph("serie", { eye: "Série " + k + " sur " + n, label: e.nom, sub: "Objectif : " + cible(e), big: "", unit: "", msg: "Prêt ?" });
+    await dire("Série " + k + " sur " + n + " : " + cibleVoix(e) + ". Prêt ? 3, 2, 1, c'est parti.", j); chk(j);
+    if (!cfg.voix) { unite("départ"); for (var q = 3; q >= 1; q--) { maj(String(q), "Départ dans " + q, q / 3); bip(660, 120); if (!(await attendre(1000, j))) throw new Saut("stop"); chk(j); } }
+    if (t) {
+      unite("secondes");
+      if (cfg.bip) bip(1320, 300);
+      for (var s = nb; s >= 1; s--) {
+        if (sautVal === "serie") { sautVal = null; break; }
+        maj(String(s), "Tiens la position, respire.", s / nb);
+        if (cfg.bip && s <= 3 && s !== nb) bip(880, 100);
+        if (!(await attendre(1000, j))) throw new Saut("stop"); chk(j);
+      }
+      if (cfg.bip) { bip(1320, 200); await attendre(350, j); bip(1320, 200); await attendre(350, j); }
+    } else if (cfg.bip) {
+      unite("sur " + nb + (cote(e) ? " par côté" : ""));
+      var ms = Math.max(1, cfg.tempo) * 1000;
+      for (var r = 1; r <= nb; r++) {
+        if (sautVal === "serie") { sautVal = null; break; }
+        maj(String(r), "Une répétition par bip.", r / nb);
+        bip(r === nb ? 1320 : 880, r === nb ? 300 : 120);
+        if (!(await attendre(ms, j))) throw new Saut("stop"); chk(j);
+      }
+    } else {
+      unite("répétitions" + (cote(e) ? " par côté" : "")); maj(String(nb), "À ton rythme. Appuie sur « Série terminée » à la fin.", null);
+      while (sautVal !== "serie") { if (!(await attendre(200, j))) throw new Saut("stop"); chk(j); }
+      sautVal = null;
+    }
+    chk(j);
+  }
+  async function commencerSes() {
+    if (!ses || ses.phase !== "config") return;
+    var j = ++jeton; audio(); demander(); voixMuette = false; enPause = false; sautVal = null; etat = "marche"; ajout = 0;
+    ses.st = { debut: Date.now(), pauseMs: 0, pauseA: 0, fin: 0, series: {} };
+    clearInterval(chronoIv); chronoIv = setInterval(function () { var c = el("gs-chrono"); if (c && ses) c.textContent = mmss(ecoule()); }, 1000);
+    var voixVoulue = cfg.voix, L = ses.liste;
+    try {
+      if (cfg.voix) { var d = await voixDispo(); if (j !== jeton) return; if (d !== "ok") { cfg.voix = false; } }
+      if (cfg.ech && ses.W.length) {
+        var W = ses.W; ses.i = -1; ses.sn = W.length;
+        try {
+          for (ses.si = 0; ses.si < W.length; ses.si++) {
+            var w = W[ses.si];
+            ph("ech", { eye: w.cat || "Échauffement", label: w.nom, sub: "", big: String(w.d), unit: "secondes", msg: w.detail || "", ill: illuPas(w, ses.si + 1, W.length, W) });
+            await dire((ses.si === 0 ? "Échauffement guidé. " : "") + w.t, j); chk(j);
+            await compte(w.d, j);
+          }
+        } catch (x) { if (x instanceof Saut && x.t === "exo") { sautVal = null; enPause = false; } else throw x; }
+      }
+      for (ses.i = 0; ses.i < L.length; ses.i++) {
+        var e = L[ses.i], n = nbSeries(e), p1 = e.etapes && e.etapes[0] ? e.etapes[0] : "";
+        try {
+          ses.e = e; ses.k = 1;
+          ph("place", { eye: ses.i === 0 ? "Premier exercice · mise en place" : "Exercice suivant · mise en place", label: e.nom, sub: n + " séries · " + cible(e), big: String(cfg.trans), unit: "secondes", msg: p1 });
+          await dire((ses.i === 0 ? "C'est parti. Premier exercice : " : "Exercice suivant : ") + e.nom + ". " + p1 + " " + n + " séries de " + cibleVoix(e) + ". Place-toi, tu as " + cfg.trans + " secondes.", j); chk(j);
+          await compte(cfg.trans, j);
+          for (var k = 1; k <= n; k++) {
+            ses.k = k;
+            if (k > 1) {
+              var rp = reposAuto(e);
+              ph("repos", { eye: "Repos · ensuite série " + k + " sur " + n, label: e.nom, sub: "Objectif : " + cible(e), big: String(rp), unit: "secondes", msg: "Récupère : respire calmement, bois une gorgée." });
+              await dire("Série terminée. Repos, " + rp + " secondes.", j); chk(j);
+              await compte(rp, j);
+              await dire("Repos terminé.", j); chk(j);
+            }
+            await attendreAppui(j, e, k, n);
+            await serieSes(e, k, n, j);
+            ses.st.series[e.id] = (ses.st.series[e.id] || 0) + 1;
+          }
+          if (ses.i < L.length - 1) await dire("Exercice terminé. Bien joué.", j);
+        } catch (x) {
+          if (x instanceof Saut && x.t === "exo") { sautVal = null; enPause = false; continue; }
+          throw x;
+        }
+      }
+      if (j === jeton) {
+        ses.i = L.length - 1;
+        bilan(false);
+        await dire("Séance terminée. Bravo ! " + (ses.E.length ? "Tu peux lancer les étirements guidés." : "Pense au retour au calme."), j);
+      }
+    } catch (x) {
+      if (!(x instanceof Saut) && j === jeton && ses) { stopTout(); if (ses.st) bilan(true); else fermerSes(); if (ses) maj(undefined, "Le guidage s'est arrêté à cause d'une erreur. Tes séries faites sont comptées ci-dessus."); }
+    } finally { cfg.voix = voixVoulue; }
+  }
+  async function lancerEtir() {
+    if (!ses || ses.phase !== "fin" || !ses.E.length) return;
+    var j = ++jeton, E = ses.E; audio(); demander(); voixMuette = false; enPause = false; sautVal = null; etat = "marche"; ajout = 0;
+    var voixVoulue = cfg.voix;
+    try {
+      if (cfg.voix) { var d = await voixDispo(); if (j !== jeton) return; if (d !== "ok") cfg.voix = false; }
+      ses.sn = E.length;
+      for (ses.si = 0; ses.si < E.length; ses.si++) {
+        var s = E[ses.si], cotes = s.cotes ? ["Côté gauche", "Côté droit"] : [""];
+        for (var c = 0; c < cotes.length; c++) {
+          ph("etir", { eye: s.cotes ? cotes[c] : (s.mus && s.mus.length ? "Les deux côtés ensemble" : "Retour au calme"), label: s.nom, sub: "", big: String(s.d), unit: "secondes", msg: s.detail || s.t, ill: illuPas(s, ses.si + 1, E.length, E) });
+          await dire((c === 0 ? s.nom + ". " + (s.detail || s.t) + " " : "") + (cotes[c] ? cotes[c] + ", " : "") + s.d + " secondes. Respire calmement, sans douleur.", j); chk(j);
+          await compte(s.d, j);
+        }
+      }
+      if (j === jeton) { finEtir(true); await dire("Retour au calme terminé. Bravo.", j); }
+    } catch (x) { if (!(x instanceof Saut) && j === jeton && ses) finEtir(); }
+    finally { cfg.voix = voixVoulue; }
+  }
+  function finEtir(depuisBoucle) {
+    if (!ses) return;
+    if (!depuisBoucle) stopTout();
+    etat = "repos"; enPause = false; liberer(); ses.calme = true; ses.cs = 0;
+    ph("fin", { label: ses.arrete ? "Séance arrêtée" : "Séance terminée", sub: "", msg: "" });
   }
 
   function drawOf(e) { var k = ALIAS[e.id] || e.id; return k === "pompes" ? [ANAT.pu1, ANAT.pu2] : (ANAT.dr[k] || null); }
@@ -315,7 +707,7 @@
   function htmlMouv(e) {
     var dd = drawOf(e); if (!dd) return "";
     var leg = ALIAS[e.id] === "pompes" || e.id === "pompes" ? "Haut : bras tendus, corps aligné. Bas : coudes fléchis, poitrine près du sol." : "Gauche : départ. Droite : arrivée. Les étapes détaillées sont dans l'onglet Étapes.";
-    return '<div class="gs-draw"><img src="' + dd[0] + '" alt="' + esc(e.nom) + ', position de départ"><img src="' + dd[1] + '" alt="' + esc(e.nom) + ', position d\'arrivée"></div><p class="doux petit">' + leg + (ANAT.dn[e.id] ? " " + esc(ANAT.dn[e.id]) : "") + '</p>';
+    return '<div class="gs-draw"><img src="' + dd[0] + '"' + png(dd[0]) + ' alt="' + esc(e.nom) + ', position de départ"><img src="' + dd[1] + '"' + png(dd[1]) + ' alt="' + esc(e.nom) + ', position d\'arrivée"></div><p class="doux petit">' + leg + (ANAT.dn[e.id] ? " " + esc(ANAT.dn[e.id]) : "") + '</p>';
   }
   function htmlMus(e) {
     var h = '<p class="doux">Muscles : ' + esc(e.muscles || "") + "</p>";
@@ -329,7 +721,7 @@
     } else h += '<p class="doux petit">Exercice du corps entier : pas de schéma musculaire, aucun muscle n\'est mis en avant.</p>';
     return h;
   }
-  window.S4L = { plate: function (e) { return aMus(e) ? '<div class="gs-anat ' + aMus(e).map(function (k) { return "on-" + k; }).join(" ") + '">' + ANAT.svg + '</div>' : null; }, has: etiqExo, thumb: function (e) { var d = drawOf(e); return d ? d[1] : null; }, steps: htmlSteps, mouv: function (e) { return etiqExo(e) ? htmlMouv(e) + '<p class="doux petit">Crédits : dessins Everkinetic (CC BY-SA 3.0), via Wikimedia Commons, couleurs modifiées.</p>' : ""; }, mus: htmlMus };
+  window.S4L = { vig: vig, plate: function (e) { return aMus(e) ? '<div class="gs-anat ' + aMus(e).map(function (k) { return "on-" + k; }).join(" ") + '">' + ANAT.svg + '</div>' : null; }, has: etiqExo, thumb: function (e) { var d = drawOf(e); return d ? d[1] : null; }, steps: htmlSteps, mouv: function (e) { return etiqExo(e) ? htmlMouv(e) + '<p class="doux petit">Crédits : dessins Everkinetic (CC BY-SA 3.0), via Wikimedia Commons, couleurs modifiées.</p>' : ""; }, mus: htmlMus };
   function htmlSteps(e) {
     return '<p class="doux">Pas de dessin de mouvement exact pour cet exercice : voici les consignes écrites.</p><ol class="etapes">' + (e.etapes || []).map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>";
   }
@@ -344,134 +736,12 @@
       h += htmlMus(e);
     } else {
       h += '<ol class="etapes">' + (e.etapes || []).map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>";
+      if (e.erreurs) h += '<p class="gs-err"><strong>À éviter :</strong> ' + esc(e.erreurs) + "</p>";
+      if (e.conseil) h += '<p class="doux"><strong>Conseil :</strong> ' + esc(e.conseil) + "</p>";
     }
     if (etiqExo(e) && tab === "mouv") h += '<p class="doux petit">Crédits : dessins Everkinetic (CC BY-SA 3.0), via Wikimedia Commons, couleurs modifiées.</p>';
     return h + "</div></div>";
   }
-  function renderCompact(o, ph) {
-    var e = ses.e, pz = etat === "pause" ? "Reprendre" : "Pause", prim = "", sec = "";
-    var vide = '<span class="gs-vide" aria-hidden="true"></span>', suiv = '<button class="second gs-faible" data-guide="sess-exo">Exercice suivant</button>', pb = '<button class="second" data-guide="pause">' + pz + "</button>", plus = '<button class="second" data-guide="sess-plus">+ 15 s</button>';
-    if (ph === "place") { prim = '<button class="gs-prim" data-guide="sess-skip">Je suis prêt</button>'; sec = pb + suiv + plus; }
-    else if (ph === "repos") { prim = '<button class="gs-prim" data-guide="sess-skip">Passer le repos</button>'; sec = pb + suiv + plus; }
-    else if (ph === "attente") { prim = '<button class="gs-prim" data-guide="sess-go">Démarrer la série</button>'; sec = pb + suiv + vide; }
-    else if (ph === "serie") { prim = '<button class="gs-prim" data-guide="sess-skip">Série terminée</button>'; sec = pb + suiv + vide; }
-    if (ses.rph !== ph) { ses.rph = ph; ses.t0 = Date.now(); }
-    var h = '<div class="guide-ses-in gs ph-' + ph + (ses.tab ? " open" : "") + '">', nEx = ses.liste.length;
-    if (ph === "fin") {
-      h += '<div class="gs-end"><h3>' + esc(ses.label) + '</h3><p class="doux">' + esc(ses.sub) + '</p><p id="ses-msg" role="status" aria-live="polite" class="doux">' + esc(ses.msg) + '</p></div><div class="gs-main"><button class="gs-prim" data-guide="sess-close">Fermer</button></div></div>';
-      o.className = "guide-ses gsx"; o.innerHTML = h; return;
-    }
-    o.className = "guide-ses gsx";
-    var unite = (ph === "place" || ph === "repos") ? "secondes" : (ses.u || "");
-    h += '<div class="gs-prog" role="progressbar" aria-label="Avancement de la séance" aria-valuemin="0" aria-valuemax="' + nEx + '" aria-valuenow="' + (ses.i + 1) + '"><i style="width:' + Math.max(4, Math.round(ses.i / nEx * 100)) + '%"></i></div>';
-    h += '<div class="gs-top"><span id="ses-pos">Exercice ' + (ses.i + 1) + " sur " + nEx + "</span>" + '<button class="gs-link" data-guide="stop">Arrêter la séance</button>' + "</div>";
-    h += '<div class="gs-hero verre">' + (etiqExo(e) ? '<img class="gs-thumb" src="' + drawOf(e)[1] + '" alt="">' : "") + "<div><h3>" + esc(ses.label) + '</h3><p class="doux">' + esc(ses.sub) + "</p></div></div>";
-    h += '<div class="gs-mid"><p class="guide-big" id="ses-big" aria-hidden="true">' + esc(ses.big) + '</p><p class="gs-unit" id="ses-unit">' + unite + '</p><p id="ses-msg" role="status" aria-live="polite" class="gs-msg">' + esc(ses.msg) + "</p></div>";
-    h += '<div class="gs-main">' + prim + '</div><div class="gs-sec">' + sec + "</div>";
-    if (!ses.tab) h += '<div class="gs-tabs"><button class="gs-tab" data-guide="tab-mouv">Mouvement</button><button class="gs-tab" data-guide="tab-mus">Muscles</button><button class="gs-tab" data-guide="tab-ste">Étapes</button></div>';
-    else h += feuille(e, ses.tab);
-    o.innerHTML = h + "</div>";
-  }
-  function maj(big, msgTxt) {
-    if (!ses) return;
-    if (big !== undefined) { ses.big = big; var b = el("ses-big"); if (b) b.textContent = big; }
-    if (msgTxt !== undefined) { ses.msg = msgTxt; var m = el("ses-msg"); if (m) m.textContent = msgTxt; }
-  }
-  function phase(p, label, sub, big, m) { ses.u = ""; ses.phase = p; ses.label = label; ses.sub = sub || ""; ses.big = big === undefined ? "" : big; ses.msg = m || ""; renderSes(); }
-  async function compte(sec, j) {
-    var reste = sec * 1000;
-    while (reste > 0) {
-      if (sautVal === "compte") { sautVal = null; break; }
-      chk(j);
-      if (ajout) { reste += ajout * 1000; ajout = 0; }
-      maj(String(Math.ceil(reste / 1000)));
-      if (cfg.bip && reste % 1000 === 0 && reste <= 3000) bip(660, 100);
-      if (!(await attendre(100, j))) throw new Saut("stop");
-      reste -= 100;
-    }
-    chk(j);
-    if (cfg.bip) bip(1320, 250);
-  }
-  async function attendreAppui(j) {
-    if (cfg.auto) return;
-    phase("attente", ses.label, "À toi de lancer", "", "Appuie sur « Démarrer la série » quand tu es prêt.");
-    var p = new Promise(function (r) { attenteTap = r; });
-    await dire("Appuie sur Démarrer quand tu es prêt.", j); chk(j);
-    await p;
-    attenteTap = null; chk(j);
-  }
-  async function serieSes(e, k, n, j) {
-    var nb = valeur(e), t = tenu(e);
-    phase("serie", "Série " + k + " sur " + n + " : " + e.nom, t ? nb + " secondes" : nb + " répétitions", "", "Prêt ?");
-    await dire("Série " + k + " sur " + n + " : " + (t ? nb + " secondes" : nb + " répétitions") + (cote(e) ? ", de chaque côté" : "") + ". Prêt ? 3, 2, 1, c'est parti.", j); chk(j);
-    if (!cfg.voix) { for (var q = 3; q >= 1; q--) { maj(String(q), "Départ dans " + q); bip(660, 120); if (!(await attendre(1000, j))) throw new Saut("stop"); chk(j); } }
-    if (t) {
-      ses.u = "secondes"; var uu2 = el("ses-unit"); if (uu2) uu2.textContent = ses.u;
-      if (cfg.bip) bip(1320, 300);
-      for (var s = nb; s >= 1; s--) {
-        if (sautVal === "serie") { sautVal = null; break; }
-        maj(String(s), "Tenue en cours");
-        if (cfg.bip && s <= 3 && s !== nb) bip(880, 100);
-        if (!(await attendre(1000, j))) throw new Saut("stop"); chk(j);
-      }
-      if (cfg.bip) { bip(1320, 200); await attendre(350, j); bip(1320, 200); await attendre(350, j); }
-    } else if (cfg.bip) {
-      var ms = Math.max(1, cfg.tempo) * 1000;
-      for (var r = 1; r <= nb; r++) {
-        if (sautVal === "serie") { sautVal = null; break; }
-        maj(String(r), "Répétition " + r + " sur " + nb);
-        bip(r === nb ? 1320 : 880, r === nb ? 300 : 120);
-        if (!(await attendre(ms, j))) throw new Saut("stop"); chk(j);
-      }
-    } else {
-      ses.u = "répétitions à faire"; var uu = el("ses-unit"); if (uu) uu.textContent = ses.u; maj(String(nb), "À ton rythme");
-      while (sautVal !== "serie") { if (!(await attendre(200, j))) throw new Saut("stop"); chk(j); }
-      sautVal = null;
-    }
-    chk(j);
-  }
-  async function commencerSes() {
-    if (!ses || ses.phase !== "config") return;
-    var j = ++jeton; audio(); demander(); voixMuette = false; enPause = false; sautVal = null; etat = "marche";
-    var voixVoulue = cfg.voix;
-    var L = ses.liste;
-    try {
-      if (cfg.voix) { var d = await voixDispo(); if (d !== "ok") { cfg.voix = false; } }
-      for (ses.i = 0; ses.i < L.length; ses.i++) {
-        var e = L[ses.i], n = nbSeries(e);
-        try {
-          ses.e = e;
-          phase("place", (ses.i === 0 ? "Premier exercice : " : "Prochain mouvement : ") + e.nom, "Mise en place, " + n + " séries", String(cfg.trans), e.etapes && e.etapes[0] ? e.etapes[0] : "");
-          await dire((ses.i === 0 ? "C'est parti pour la séance guidée. Premier exercice : " : "Prochain mouvement : ") + e.nom + ". " + (e.etapes && e.etapes[0] ? e.etapes[0] : "") + " " + n + " séries. Place-toi, tu as " + cfg.trans + " secondes.", j); chk(j);
-          await compte(cfg.trans, j);
-          for (var k = 1; k <= n; k++) {
-            if (k > 1) {
-              var rp = reposAuto(e);
-              phase("repos", "Repos avant la série " + k + " sur " + n, e.nom, String(rp));
-              await dire("Série terminée. Repos, " + rp + " secondes.", j); chk(j);
-              await compte(rp, j);
-              await dire("Repos terminé.", j); chk(j);
-            }
-            ses.label = e.nom;
-            await attendreAppui(j);
-            await serieSes(e, k, n, j);
-          }
-          if (ses.i < L.length - 1) await dire("Exercice terminé. Bien joué.", j);
-        } catch (x) {
-          if (x instanceof Saut && x.t === "exo") { sautVal = null; enPause = false; continue; }
-          throw x;
-        }
-      }
-      if (j === jeton) {
-        etat = "repos"; liberer();
-        phase("fin", "Séance terminée", "Bien joué", "", "Pense au retour au calme et aux étirements.");
-        await dire("Séance terminée. Bien joué. Pense au retour au calme et aux étirements.", j);
-      }
-    } catch (x) {
-      if (!(x instanceof Saut)) { if (j === jeton) { etat = "repos"; if (ses) phase("fin", "Séance interrompue", "", "", "Le guidage s'est arrêté."); } }
-    } finally { cfg.voix = voixVoulue; }
-  }
-
   // Réglages (préférences) : lecture pour l'export, application validée pour l'import.
   // Les valeurs fausses sont écartées une à une ; "auto" (lancement sans appui) n'est jamais exporté ni importé.
   function nombreEntre(v, a, b) { return typeof v === "number" && isFinite(v) && Math.floor(v) === v && v >= a && v <= b; }
@@ -519,5 +789,5 @@
     var avant = JSON.stringify(cfg);
     Object.keys(n).forEach(function (k) { cfg[k] = n[k]; });
     try { localStorage.setItem(CLE, JSON.stringify(cfg)); return true; } catch (e) { var ancien = JSON.parse(avant); Object.keys(cfg).forEach(function (k) { delete cfg[k]; }); Object.keys(ancien).forEach(function (k) { cfg[k] = ancien[k]; }); return false; }
-  }, sources: sources, panel: panel, stop: arret, etat: function () { return etat; }, _cfg: cfg, _tenu: tenu };
+  }, sources: sources, panel: panel, stop: arret, estimer: function (l, ech) { return estimer(l, ech === undefined ? cfg.ech : ech); }, etat: function () { return etat; }, _cfg: cfg, _tenu: tenu };
 })();

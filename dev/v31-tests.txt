@@ -1,0 +1,154 @@
+# Sport4Life v31 - tests des parcours de séance guidée (aucun secret, aucune donnée perso).
+# Même principe que dev/v28-tests.txt : copier sport4life-app dans <R>/site, copier index.html dans <R>/index.html,
+# puis générer les pages _s_*.html et les lancer dans Chrome headless (temps virtuel, voix et bips coupés).
+# Usage (R = dossier de travail, ex. /tmp/rec) :
+#   python3 mkses.py <R>          -> écrit <R>/site/_s_S1.html ... _s_S9.html
+#   sh runs.sh <R> S1 S2 ...       -> affiche OK / ECHEC pour chaque vérification
+# Les tests d'import/export A-I et T1 de v28-tests.txt restent à lancer tels quels (runt.sh).
+# ===== mkses.py
+import json,sys
+R=sys.argv[1] if len(sys.argv)>1 else '/tmp/rec'
+idx=open(R+'/index.html').read()
+PRE='''<script>
+window.Capacitor={Plugins:{LocalNotifications:{schedule:function(){return Promise.resolve()},requestPermissions:function(){return Promise.resolve({display:"granted"})},checkPermissions:function(){return Promise.resolve({display:"granted"})},cancel:function(){return Promise.resolve()},createChannel:function(){return Promise.resolve()}}}};
+window.LOGS=[];function L(k,v){LOGS.push(k+": "+(v===true?"OK":v===false?"ECHEC":v));}
+function ok(k,c){L(k,!!c);}
+window.confirm=function(){return true};window.alert=function(){};
+function LS(k){return localStorage.getItem(k);}
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+function fin(){document.documentElement.setAttribute("data-log",LOGS.join(" || "));}
+function O(){return document.getElementById("guide-ses");}
+function T(){var o=O();return o?o.innerText.replace(/\\s+/g," "):"";}
+function prim(){var x=document.querySelector("#guide-ses .gs-prim");return x?x.textContent:"";}
+function big(){var b=document.getElementById("ses-big");return b?b.textContent:"";}
+function G(a){var b=document.querySelector('#guide-ses button[data-guide="'+a+'"]');if(b)b.click();return !!b;}
+async function tap(a){await sleep(800);return G(a);}
+async function waitPrim(t){for(var i=0;i<400;i++){if(prim().indexOf(t)===0)return true;await sleep(50);}return false;}
+function ex(id){return EXERCICES.filter(function(e){return e.id===id})[0];}
+function src(ids){S4Guide.sources.jour=function(){return ids.map(ex)};}
+async function ouvrir(ids){location.hash="#/aujourdhui";await sleep(150);src(ids);document.querySelector('[data-guide="seance-jour"]').click();await sleep(100);}
+function seed(guide){localStorage.clear();localStorage.setItem("sport4life.v1",JSON.stringify({actif:"p1",profils:[{id:"p1",nom:"Fixture S",materiel:["corps"],journal:{},valides:{},poidsLog:[]}]}));localStorage.setItem("sport4life.guide",JSON.stringify(guide));}
+</script>'''
+G0={"voix":False,"bip":False,"tempo":3,"p":{"planche":{"duree":5}},"repos":30,"trans":10,"auto":False}
+def build(name,guide,body):
+    h=idx.replace('<script src="data/exercises.js',PRE+'<script>seed('+json.dumps(guide)+');</script>\n<script src="data/exercises.js',1)
+    h=h.replace('</body>','<script>window.addEventListener("load",async function(){try{await sleep(300);'+body+'}catch(e){L("EXCEPTION",String(e&&e.stack||e))}fin();});</script></body>')
+    open(R+'/site/_s_%s.html'%name,'w').write(h)
+SANS=dict(G0,ech=False)
+# S1 lancement : aperçu, durée, échauffement inclus et désactivable, démarrage en un geste
+build('S1',G0,'''
+location.hash="#/aujourdhui";await sleep(200);
+ok("S1 bouton de lancement en tete de l'accueil",!!document.querySelector('.carte .cta-seance[data-guide="seance-jour"]'));
+await ouvrir(["pompes","squat","planche"]);
+ok("S1 lancement: echauffement + 3 exercices + etirements listes",O().querySelectorAll(".gs-plan li").length===5);
+var e1=document.getElementById("gs-est").textContent;ok("S1 duree estimee affichee",/≈ \\d+ min/.test(e1));
+var r=O().querySelector('[data-guide="sess-begin"]').getBoundingClientRect();ok("S1 Commencer visible sans defiler",r.top>=0&&r.bottom<=innerHeight);
+var cb=O().querySelector('[data-guide-cfg="ech"]');cb.click();await sleep(50);
+ok("S1 echauffement desactivable, duree recalculee",document.getElementById("gs-est").textContent!==e1&&JSON.parse(LS("sport4life.guide")).ech===false);
+cb.click();await sleep(50);
+G("sess-begin");ok("S1 un geste: l'echauffement guide demarre",await waitPrim("Suivant"));
+ok("S1 echauffement etape 1",/Échauffement 1\\/8/.test(T()));
+await tap("sess-skip");await sleep(300);ok("S1 Suivant: etape 2",/Échauffement 2\\/8/.test(T()));
+await tap("sess-exo");ok("S1 passer l'echauffement: mise en place du 1er exercice",await waitPrim("Je suis prêt"));
+ok("S1 progression visible: exercice 1/3, serie 1/4",/Exercice 1\\/3/.test(T())&&/Série 1\\/4/.test(T()));
+ok("S1 illustration du mouvement affichee",!!O().querySelector(".gs-ill-d img"));
+''')
+# S2 pause / reprise
+build('S2',SANS,'''
+await ouvrir(["pompes","squat"]);G("sess-begin");await waitPrim("Je suis prêt");await sleep(1200);
+await tap("pause");ok("S2 pause: etat pause, bouton Reprendre",S4Guide.etat()==="pause"&&prim()==="Reprendre"&&/En pause/.test(T()));
+ok("S2 pause: emplacement du bouton Pause vide (double appui sans effet)",!O().querySelector('.gs-sec [data-guide="pause"]')&&!O().querySelector('.gs-sec [data-guide="sess-plus"]'));
+var v=big();await sleep(2500);ok("S2 pause: compte a rebours fige",big()===v);
+await tap("pause");ok("S2 reprise",S4Guide.etat()==="marche"&&prim()==="Je suis prêt");
+await sleep(1600);ok("S2 reprise: le compte repart",+big()<+v);
+''')
+# S3 série terminée, repos, +15 s, passer le repos
+build('S3',SANS,'''
+await ouvrir(["pompes","squat"]);G("sess-begin");await waitPrim("Je suis prêt");
+await tap("sess-skip");ok("S3 je suis pret: attente du depart",await waitPrim("Démarrer la série"));
+await tap("sess-go");ok("S3 demarrer: serie en cours",await waitPrim("Série terminée"));
+await sleep(3500);ok("S3 sans voix: decompte de depart puis 'a ton rythme'",big()==="8");
+ok("S3 a ton rythme: texte complet, non tronque",(function(){var m=document.getElementById("ses-msg");return /À ton rythme/.test(m.textContent)&&m.scrollHeight<=m.clientHeight+2&&m.scrollWidth<=m.clientWidth+1})());
+G("tab-ste");await sleep(100);ok("S3 volet Etapes ouvert, seance visible",!!O().querySelector(".gs-sheet")&&!!document.getElementById("ses-big")&&prim()==="Série terminée");
+var m=document.getElementById("ses-msg");ok("S3 volet ouvert: 'A ton rythme' non tronque",m.scrollWidth<=m.clientWidth+1&&m.scrollHeight<=m.clientHeight+2);
+G("tab-none");
+await tap("sess-skip");ok("S3 serie terminee: repos",await waitPrim("Passer le repos"));
+ok("S3 repos: serie suivante annoncee",/ensuite série 2 sur 4/i.test(T()));
+await sleep(300);var r=+big();G("sess-plus");await sleep(250);ok("S3 +15 s",+big()>=r+14);
+await tap("sess-skip");ok("S3 passer le repos: serie 2",(await waitPrim("Démarrer la série"))&&/Série 2\\/4/.test(T()));
+''')
+# S4 exercice suivant + protection double appui
+build('S4',SANS,'''
+await ouvrir(["pompes","squat","planche"]);G("sess-begin");await waitPrim("Je suis prêt");await sleep(900);
+G("sess-exo");await sleep(60);G("sess-exo");await sleep(300);G("sess-exo");await sleep(400);
+ok("S4 triple appui rapide: un seul exercice saute",/Exercice 2\\/3/.test(T()));
+await tap("sess-exo");await sleep(300);await waitPrim("Je suis prêt");ok("S4 exercice 3/3",/Exercice 3\\/3/.test(T()));
+ok("S4 dernier exercice: libelle Finir la seance",/Finir la séance/.test(T()));
+await tap("sess-skip");await waitPrim("Démarrer");await tap("sess-go");await waitPrim("Série terminée");await sleep(3500);
+ok("S4 tenue: compte a rebours en secondes",/secondes/.test(document.getElementById("ses-unit").textContent));
+await tap("sess-exo");ok("S4 finir: bilan",await waitPrim("Étirements guidés"));
+''')
+# S5 arrêt confirmé, bilan, validation explicite, export intact
+build('S5',SANS,'''
+await ouvrir(["pompes","squat"]);G("sess-begin");await waitPrim("Je suis prêt");
+await tap("sess-skip");await waitPrim("Démarrer");await tap("sess-go");await waitPrim("Série terminée");await tap("sess-skip");await waitPrim("Passer le repos");
+await tap("sess-stop");ok("S5 1er appui Arreter: confirmation, seance continue",/Oui, arrêter/.test(T())&&S4Guide.etat()==="marche");
+await sleep(4400);ok("S5 sans 2e appui: confirmation retiree",!/Oui, arrêter/.test(T())&&prim()==="Passer le repos");
+await tap("sess-stop");await sleep(150);G("sess-stop");await sleep(200);ok("S5 2e appui trop rapide ignore",/Oui, arrêter/.test(T()));
+await sleep(500);G("sess-stop");await sleep(200);
+ok("S5 2e appui: bilan seance arretee",/Séance arrêtée/.test(T())&&S4Guide.etat()==="repos");
+ok("S5 bilan: 1 exercice, 1 serie",/1\\/2 exercices/.test(T())&&/1 séries/.test(T()));
+ok("S5 bilan: aucune ecriture avant appui",!(JSON.parse(LS("sport4life.v1")).profils[0].valides[Object.keys(JSON.parse(LS("sport4life.v1")).profils[0].valides)[0]]));
+G("sess-valider");await sleep(150);
+var p=JSON.parse(LS("sport4life.v1")).profils[0],d=Object.keys(p.valides);
+ok("S5 valider: pompes seul, meme format",d.length===1&&/^\\d{4}-\\d\\d-\\d\\d$/.test(d[0])&&JSON.stringify(p.valides[d[0]])==='["pompes"]');
+G("sess-valider");await sleep(100);ok("S5 pas de double validation",JSON.stringify(JSON.parse(LS("sport4life.v1")).profils[0].valides[d[0]])==='["pompes"]');
+G("sess-close");await sleep(200);ok("S5 fermer: plus d'ecran de seance, defilement rendu",!O()&&document.body.style.overflow==="");
+location.hash="#/profil";await sleep(200);document.querySelector("[data-export]").click();await sleep(100);
+var o=JSON.parse(document.getElementById("zone-transfert").value);
+ok("S5 export: validation incluse",JSON.stringify(o.profils[0].valides[d[0]])==='["pompes"]');
+ok("S5 export: reglages du guide sans 'auto' ni 'ech'",o.reglages&&o.reglages.guide&&!("auto" in o.reglages.guide)&&!("ech" in o.reglages.guide));
+await ouvrir(["squat"]);ok("S5 nouvelle seance possible apres arret",/Commencer/.test(prim()));
+''')
+# S6 séance complète, bilan, étirements guidés
+build('S6',dict(SANS,auto=True),'''
+await ouvrir(["pompes","planche"]);G("sess-begin");
+for(var n=0;n<80&&!/Étirements/.test(prim());n++){await sleep(800);var t=prim();if(/Je suis prêt|Passer le repos|Série terminée|Démarrer/.test(t))document.querySelector("#guide-ses .gs-prim").click();}
+ok("S6 seance complete: bilan",/Séance terminée/.test(T()));
+ok("S6 bilan: 2/2 exercices, 8 series",/2\\/2 exercices/.test(T())&&/8 séries/.test(T()));
+ok("S6 bilan: duree affichee",/\\d+:\\d\\d durée/.test(T()));
+G("sess-etir");ok("S6 etirements guides lances",await waitPrim("Suivant"));
+ok("S6 etirement 1",/Étirement 1\\//.test(T()));
+await tap("sess-skip");await sleep(300);ok("S6 etirement 2, illustre",/Étirement 2\\//.test(T())&&!!O().querySelector(".gs-ill-e .gs-anat, .gs-ill-e img"));
+await tap("sess-etir-fin");await sleep(200);ok("S6 terminer les etirements: fin",/Retour au calme terminé/.test(T())&&S4Guide.etat()==="repos");
+G("sess-close");await sleep(150);ok("S6 ferme",!O());
+''')
+# S7 écran éteint : pause automatique, reprise propre
+build('S7',SANS,'''
+await ouvrir(["pompes"]);G("sess-begin");await waitPrim("Je suis prêt");await sleep(900);
+Object.defineProperty(document,"hidden",{configurable:true,get:function(){return true}});document.dispatchEvent(new Event("visibilitychange"));
+ok("S7 ecran eteint: pause automatique",S4Guide.etat()==="pause");
+Object.defineProperty(document,"hidden",{configurable:true,get:function(){return false}});document.dispatchEvent(new Event("visibilitychange"));await sleep(100);
+ok("S7 au retour: pause visible, bouton Reprendre",prim()==="Reprendre"&&/écran s'est éteint/.test(T()));
+var v=big();await sleep(1500);ok("S7 rien ne defile en pause",big()===v);
+await tap("pause");await sleep(1600);ok("S7 reprise propre",S4Guide.etat()==="marche"&&+big()<+v);
+''')
+# S8 bouton retour (Android) : ne coupe jamais la séance d'un seul appui
+build('S8',SANS,'''
+await ouvrir(["pompes","squat"]);history.back();await sleep(300);
+ok("S8 retour sur l'ecran de lancement: ferme",!O()&&location.hash==="#/aujourdhui");
+await ouvrir(["pompes","squat"]);G("sess-begin");await waitPrim("Je suis prêt");await sleep(900);
+history.back();await sleep(300);
+ok("S8 retour en seance: pause + confirmation, seance gardee",!!O()&&S4Guide.etat()==="pause"&&/Oui, arrêter/.test(T()));
+await sleep(600);history.back();await sleep(300);ok("S8 2e retour: bilan",/Séance arrêtée/.test(T()));
+history.back();await sleep(300);ok("S8 retour sur le bilan: ferme, accueil garde",!O()&&location.hash==="#/aujourdhui");
+''')
+# S9 aucun exercice / source vide : pas d'écran bloqué ; navigation pendant la séance
+build('S9',SANS,'''
+location.hash="#/aujourdhui";await sleep(150);S4Guide.sources.jour=function(){return []};document.querySelector('[data-guide="seance-jour"]').click();await sleep(100);
+ok("S9 seance vide: pas d'ecran bloque",!O());
+await ouvrir(["pompes"]);G("sess-begin");await waitPrim("Je suis prêt");
+location.hash="#/exercices";await sleep(300);ok("S9 changement de page: seance arretee proprement",!O()&&S4Guide.etat()==="repos"&&document.body.style.overflow==="");
+''')
+# ===== runs.sh
+# R=$1; shift; for n in "$@"; do echo "== $n"; google-chrome --headless=new --no-sandbox --disable-gpu --window-size=360,640 --virtual-time-budget=150000 --dump-dom file://$R/site/_s_$n.html 2>/dev/null | grep -o 'data-log="[^"]*"' | sed 's/ || /\n  /g;s/data-log="/  /;s/"$//'; done

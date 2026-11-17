@@ -119,7 +119,7 @@ state=sys.argv[1]
 exid=sys.argv[2] if len(sys.argv)>2 else ""
 seed='''<script>
 window.AUTRE="'''+exid+'''";try{localStorage.clear();localStorage.setItem("sport4life.v1",JSON.stringify({actif:"p1",profils:[{id:"p1",nom:"Test fixture",materiel:["corps"]}]}));
-localStorage.setItem("sport4life.guide",JSON.stringify({voix:false,bip:false,trans:10,repos:30,tempo:3,p:{},auto:false}));}catch(e){}
+localStorage.setItem("sport4life.guide",JSON.stringify({voix:false,bip:false,trans:10,repos:30,tempo:3,p:{},auto:false,ech:false}));}catch(e){}
 </script>'''
 drv='''<script>
 (function(){

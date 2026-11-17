@@ -269,10 +269,10 @@
   }
 
 
-  var V = "30";
+  var V = "31";
   function vignette(e) {
-    if (window.S4L && S4L.thumb(e)) return '<div class="vignette illu" aria-hidden="true"><img src="' + S4L.thumb(e) + '" alt="" width="52" height="52"></div>';
-    if (window.S4L && S4L.plate(e)) return '<div class="vignette illu plate" aria-hidden="true">' + S4L.plate(e) + '</div>';
+    // v31 : miniature claire et lisible (dessin du mouvement, sinon planche musculaire face ou dos), fournie par guide.js.
+    if (window.S4L && S4L.vig) return S4L.vig(e);
     if (false && window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
   }
@@ -483,7 +483,7 @@
       var repas = a.repas.map(repasParId).filter(Boolean);
       var gA = groupesSeance(exos, exos.length ? exos[0].groupe : "");
       h += blocEchauffement(p, gA);
-      if (window.S4Guide && exos.length) h += '<p style="margin-top:16px"><button data-guide="seance-alea">Séance guidée (voix, repos, transitions)</button></p>';
+      if (window.S4Guide && exos.length) h += '<button class="cta-seance" style="margin-top:16px" data-guide="seance-alea"><span class="cta-play" aria-hidden="true"></span><span class="cta-txt"><strong>Lancer en séance guidée</strong><small>' + exos.length + " exercices" + (window.S4Guide.estimer ? " · ≈ " + Math.max(1, Math.round(window.S4Guide.estimer(exos) / 60)) + " min" : "") + "</small></span></button>";
       h += '<h3 style="margin-top:16px">Exercices (' + faits.filter(function (id) { return a.exos.indexOf(id) !== -1; }).length + "/" + exos.length + " validés)</h3>";
       exos.forEach(function (e) {
         var fait = faits.indexOf(e.id) !== -1;
@@ -598,6 +598,44 @@
     return h + "</details>";
   }
 
+  // ---------- Pour la séance guidée (guide.js) : mêmes listes que l'accueil, découpées en étapes chronométrées ----------
+  // Zone étirée (schéma indicatif sur la planche) et étirement d'un côté puis de l'autre.
+  var ETIR_INFO = {
+    "Pectoraux": [["pec"], true], "Triceps": [["triceps"], true], "Épaule": [["deltpost"], true], "Dos": [["lats"], false],
+    "Avant-bras et biceps": [["biceps"], true], "Côté du buste": [["obliques", "lats"], true], "Fessiers": [["glute"], true],
+    "Arrière de cuisse": [["ischio"], true], "Mollet": [["mollet"], true], "Avant de cuisse": [["quad"], true],
+    "Intérieur de cuisse": [[], false], "Torsion allongée": [["obliques"], true], "Posture de l'enfant": [["lats"], false], "Avant du tronc": [["abs"], false]
+  };
+  function decoupe(t) {
+    var i = t.indexOf(" : "), nom = i > 0 ? t.slice(0, i) : t.replace(/\.$/, ""), det = i > 0 ? t.slice(i + 3) : "";
+    if (det) det = det.charAt(0).toUpperCase() + det.slice(1);
+    var il = illuDe(t);
+    return { t: t, nom: nom, detail: det, img: il ? window.IMGS[il.cle] : null, credit: il ? il.auteur : "" };
+  }
+  function groupesDe(liste) { return groupesSeance(liste, liste.length ? liste[0].groupe : "Pousser"); }
+  window.S4App = {
+    echauffement: function (liste) {
+      if (!liste || !liste.length) return [];
+      var gen = ["Marche sur place puis en avant et en arrière, bras actifs : 1 minute.", "Montées de genoux légères : 1 minute.", "Talons-fesses légers : 1 minute."];
+      var out = gen.map(function (t) { var o = decoupe(t); o.d = 60; o.cat = "Échauffement · monter en température"; return o; });
+      choisir(ECH_MOUV, groupesDe(liste), 5, /^(Talons-fesses|Montées de genoux|Marche)/).forEach(function (t) { var o = decoupe(t); o.d = 45; o.cat = "Échauffement · mobilité"; out.push(o); });
+      return out;
+    },
+    etirements: function (liste) {
+      if (!liste || !liste.length) return [];
+      var out = [{ t: "Redescendre : marche lente et respiration calme.", nom: "Redescendre", detail: "Marche lente et respiration calme, jusqu'à ce que le souffle et le cœur redescendent.", d: 90, cotes: false, mus: [], img: null, credit: "" }];
+      choisir(CALME_ETIR, groupesDe(liste), 6).forEach(function (t) { var o = decoupe(t), inf = ETIR_INFO[o.nom] || [[], false]; o.d = 20; o.mus = inf[0]; o.cotes = inf[1]; out.push(o); });
+      return out;
+    },
+    // Appelé seulement par un appui sur « Valider » dans le bilan : même format que le bouton Valider de l'accueil.
+    valider: function (ids) {
+      var p = profil(); if (!p) return false;
+      var j = aujourdhui(); p.valides[j] = p.valides[j] || [];
+      (ids || []).forEach(function (id) { if (exoParId(id) && p.valides[j].indexOf(id) === -1) p.valides[j].push(id); });
+      var ok = sauver(); route(); return ok;
+    }
+  };
+
   function vueAujourdhui() {
     var p = profil(), s = seance(p), jour = aujourdhui();
     var faits = p.valides[jour] || [];
@@ -605,12 +643,16 @@
     var h = alerteHtml() + "<h2>Séance du jour</h2>";
     h += '<div class="carte verre"><p class="doux">' + esc(new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })) + "</p>";
     h += "<h3>Focus : " + esc(s.focus) + "</h3>";
-    h += '<p class="doux">Exercices choisis selon ton matériel (' + p.materiel.length + " sélectionné" + (p.materiel.length > 1 ? "s" : "") + "). " + nbFaits + "/" + s.liste.length + " validé" + (nbFaits > 1 ? "s" : "") + ".</p></div>";
+    h += '<p class="doux">Exercices choisis selon ton matériel (' + p.materiel.length + " sélectionné" + (p.materiel.length > 1 ? "s" : "") + "). " + nbFaits + "/" + s.liste.length + " validé" + (nbFaits > 1 ? "s" : "") + ".</p>";
+    if (window.S4Guide && s.liste.length) {
+      var est = window.S4Guide.estimer ? Math.max(1, Math.round(window.S4Guide.estimer(s.liste) / 60)) : 0;
+      h += '<button class="cta-seance" data-guide="seance-jour"><span class="cta-play" aria-hidden="true"></span><span class="cta-txt"><strong>Lancer la séance guidée</strong><small>' + s.liste.length + " exercices" + (est ? " · ≈ " + est + " min" : "") + " · échauffement et étirements guidés</small></span></button>";
+    }
+    h += "</div>";
     h += blocAleatoire(p, faits);
     var grp = groupesSeance(s.liste, s.focus);
     h += blocEchauffement(p, grp);
     h += '<h3 style="margin:6px 4px 10px">Séance proposée</h3>';
-    if (window.S4Guide && s.liste.length) h += '<p style="margin:0 4px 12px"><button data-guide="seance-jour">Séance guidée (voix, repos, transitions)</button></p>';
     s.liste.forEach(function (e) {
       var fait = faits.indexOf(e.id) !== -1;
       h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div>" + infoSeries(p, e) + "</div>" +
@@ -1137,6 +1179,7 @@
 
   if (window.S4Guide) {
     window.S4Guide.sources.jour = function () { return seance(profil()).liste; };
+    window.S4Guide.sources.jourTitre = function () { return "Focus " + seance(profil()).focus; };
     window.S4Guide.sources.alea = function () { var p = profil(), x = p.aleatoire && p.aleatoire.date === aujourdhui() ? p.aleatoire : null; return x ? x.exos.map(exoParId).filter(Boolean) : []; };
   }
   function route() {
