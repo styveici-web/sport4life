@@ -269,10 +269,10 @@
   }
 
 
-  var V = "29";
+  var V = "30";
   function vignette(e) {
     if (window.S4L && S4L.thumb(e)) return '<div class="vignette illu" aria-hidden="true"><img src="' + S4L.thumb(e) + '" alt="" width="52" height="52"></div>';
-    if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
+    if (false && window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
   }
   // ---------- Séries, historique ----------
@@ -701,8 +701,8 @@
     var h = '<p><a href="#/exercices">← Exercices</a></p><h2>' + esc(e.nom) + "</h2>";
     var ph = window.PHOTOS && window.PHOTOS[e.id];
     if (window.S4L && S4L.has(e)) h += '<div class="illu-exo verre">' + S4L.mouv(e) + '</div>';
-    else if (ph && window.IMGS && window.IMGS[e.id]) h += '<figure class="photo-exo verre"><img src="' + window.IMGS[e.id] + '" alt="' + esc(e.nom) + '" width="520" height="390"><figcaption>Photo : ' + esc(ph.auteur) + ' / <a href="https://www.pexels.com/photo/' + ph.pexels + '/" target="_blank" rel="noopener">Pexels</a></figcaption></figure>';
-    else h += '<div class="image-ph verre" role="img" aria-label="Pas de photo"><div>Photo<small>Pas de photo pour ce mouvement pour l\'instant.</small></div></div>';
+    else if (false && ph && window.IMGS && window.IMGS[e.id]) h += '<figure class="photo-exo verre"><img src="' + window.IMGS[e.id] + '" alt="' + esc(e.nom) + '" width="520" height="390"><figcaption>Photo : ' + esc(ph.auteur) + ' / <a href="https://www.pexels.com/photo/' + ph.pexels + '/" target="_blank" rel="noopener">Pexels</a></figcaption></figure>';
+    else h += '<div class="illu-exo verre"><p class="doux">Pas de dessin de mouvement exact pour cet exercice : suis les étapes écrites ci-dessous.</p></div>';
     if (window.S4L) h += '<div class="illu-exo verre">' + S4L.mus(e) + '</div>';
     var pf = profil(), serie = seriesOverride;
     if (!serie) {
