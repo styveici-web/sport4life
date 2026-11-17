@@ -272,6 +272,7 @@
   var V = "30";
   function vignette(e) {
     if (window.S4L && S4L.thumb(e)) return '<div class="vignette illu" aria-hidden="true"><img src="' + S4L.thumb(e) + '" alt="" width="52" height="52"></div>';
+    if (window.S4L && S4L.plate(e)) return '<div class="vignette illu plate" aria-hidden="true">' + S4L.plate(e) + '</div>';
     if (false && window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
   }
