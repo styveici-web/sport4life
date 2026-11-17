@@ -138,3 +138,4 @@ details.carte li{margin:4px 0}
 
 .vignette.illu{padding:0;overflow:hidden;background:#fff;filter:invert(1)}.vignette.illu img{width:100%;height:100%;object-fit:contain;display:block}
 .illu-exo{margin:0 0 14px;padding:12px;border-radius:22px}.illu-exo .gs-draw img{filter:invert(1)}
+.vignette.plate{overflow:hidden;padding:2px}.vignette.plate .gs-anat,.vignette.plate svg{width:100%;height:100%;max-height:none}
