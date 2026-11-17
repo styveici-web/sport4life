@@ -2,7 +2,7 @@
 # Même principe que dev/v31-tests.txt : copier sport4life-app dans <R>/site, copier index.html dans <R>/index.html,
 # puis générer les pages _r_*.html et les lancer dans Chrome headless (temps virtuel).
 # Usage (R = dossier de travail, ex. /tmp/rec) :
-#   python3 mkrepas.py <R>           -> écrit <R>/site/_r_R1.html ... _r_R12.html (R1 R2 R2b R2c R3 R3b R4 R6 R7 R8 R9 R9b R10 R11 R12)
+#   python3 mkrepas.py <R>           -> écrit <R>/site/_r_R1.html ... _r_R12.html (R1 R2 R2b R2c R3 R3b R4 R6 R7 R8 R9 R9b R10 R11 R12 A1 A2 A3)
 #   sh runr.sh <R> R1 R2 ...          -> affiche OK / ECHEC pour chaque vérification
 # Les suites v28 (A-I, T1), v31 (S1-S9) et v32 (C1-C8) restent à lancer telles quelles (zéro régression).
 # ===== mkrepas.py
@@ -137,7 +137,7 @@ var interdits=REPAS.filter(function(r){return r.tags.some(function(x){return EX.
 ok("R8 aucun repas exclu affiche (repas du jour et Tous les repas)",noms.length>0&&!noms.some(function(n){return interdits.indexOf(n)!==-1}));
 ok("R8 masques annonces et texte de limites affiche",/masqués par tes exclusions/.test(t)&&/Ce n'est pas une garantie contre les allergies/.test(t));
 document.querySelector("[data-repas-regen]").click();await sleep(200);ok("R8 Autres repas: toujours aucun repas exclu",!tagsDe(PROF().repasJour.repas).some(function(x){return EX.indexOf(x)!==-1}));
-location.hash="#/aujourdhui";await sleep(200);document.querySelector("[data-alea]").click();await sleep(300);
+location.hash="#/aleatoire";await sleep(200);document.querySelector("[data-alea]").click();await sleep(300);
 ok("R8 seance aleatoire: aucun repas exclu",!tagsDe(PROF().aleatoire.repas).some(function(x){return EX.indexOf(x)!==-1})&&/Pas assez de repas compatibles/.test(document.getElementById("alea").innerText));
 ''' % json.dumps(TROP))
 # R9 invalidation des repas déjà tirés quand les préférences changent
@@ -152,7 +152,7 @@ ok("R9 onglet Repas: plus aucun repas avec viande",!/Poulet|bœuf|porc|jambon|Di
 build('R9b','var J=%s;seed([{"id":"p1","nom":"R9b","taille":"180","poids":"75","age":"30","sexe":"h","activite":"1.55","materiel":["corps"],"journal":{},"valides":{},"poidsLog":[],"alimentation":{"regime":"","exclus":["poisson"],"aimes":[],"pasAimes":[]},"repasJour":{"date":J,"repas":["p1","d2","c11"]},"aleatoire":{"date":J,"exos":["squat"],"repas":["p1","d2","c11"]}}]);'%jour(),'''
 location.hash="#/repas";await sleep(300);var ids=PROF().aleatoire.repas;
 ok("R9b repas deja tires puis exclus: remplaces a l'affichage",!tagsDe(ids).some(function(x){return x==="poisson"})&&!/Saumon|Thon/.test([].map.call(document.querySelectorAll(".repas strong"),function(s){return s.textContent}).slice(0,6).join("|")));
-location.hash="#/aujourdhui";await sleep(250);ok("R9b seance aleatoire: aucun repas avec poisson",!/Saumon|Thon/.test((document.getElementById("alea")||{}).innerText||"")&&same(PROF().aleatoire.exos,["squat"]));
+location.hash="#/aleatoire";await sleep(250);ok("R9b seance aleatoire: aucun repas avec poisson",!/Saumon|Thon/.test((document.getElementById("alea")||{}).innerText||"")&&same(PROF().aleatoire.exos,["squat"]));
 ''')
 # R10 interface du profil : libellés, aide lactose, raccourci, compteur en direct, goûts exclusifs, limites
 build('R10',NEUTRE,'''
@@ -200,5 +200,51 @@ ok("R12 skyr, edamame, legumes grilles retires de tous les repas",!REPAS.some(fu
 ok("R12 lait a teneur reduite en lactose: tag lait seulement",same(ALIMENTS.filter(function(a){return a.id==="lait-sans-lactose"})[0].tags,["lait"]));
 ok("R12 poids d'unite affiches comme reperes (environ)",/165 g d'œuf \\(cru, environ 3 œufs\\)/.test(R_("p2").detail));
 ''' % json.dumps(CIQ))
+# A1-A3 accueil allégé : ordre des blocs, replis, « Changer de séance », séance aléatoire sur son écran
+ACC='seed([{"id":"p1","nom":"Accueil","taille":"172","poids":"64","age":"29","sexe":"f","activite":"1.55","materiel":["corps","halteres","banc"],"journal":{},"valides":{},"poidsLog":[]}]);'
+build('A1',ACC,'''
+location.hash="#/aujourdhui";await sleep(250);var v=document.getElementById("vue");
+function pos(sel){var e=v.querySelector(sel);if(!e)return -1;return [].indexOf.call(v.querySelectorAll("*"),e);}
+var ordre=["#seance-jour","#echauffement","#seance-proposee",".exo","#retour-calme","#changer","#nutrition"].map(pos);
+L("A1 positions",ordre.join(","));
+ok("A1 ordre: seance du jour, echauffement, seance proposee, exercices, retour au calme, changer de seance, nutrition",ordre.every(function(x,i){return x>=0&&(i===0||x>ordre[i-1])}));
+ok("A1 carte seance: date, focus, resume, bouton principal",/Focus : /.test(v.querySelector("#seance-jour").innerText)&&/\\d+\\/\\d+ validé/.test(v.querySelector("#seance-jour").innerText)&&/Lancer la séance guidée[\\s\\S]*\\d+ exercices · ≈ \\d+ min · guidage voix/.test(v.querySelector('#seance-jour [data-guide="seance-jour"]').innerText));
+ok("A1 echauffement, retour au calme et nutrition replies par defaut",["#echauffement","#retour-calme","#nutrition"].every(function(s){var d=v.querySelector(s);return d.tagName==="DETAILS"&&!d.open}));
+v.querySelector("#echauffement summary").click();v.querySelector("#retour-calme summary").click();v.querySelector("#nutrition summary").click();await sleep(100);
+ok("A1 depliables",["#echauffement","#retour-calme","#nutrition"].every(function(s){return v.querySelector(s).open}));
+ok("A1 nutrition: une ligne kcal/proteines + acces aux repas du jour et rappel du filtre",/≈ \\d+ kcal · \\d+ g de protéines par jour/.test(v.querySelector("#nutrition summary").innerText)&&!!v.querySelector('#nutrition a[href="#/repas"]')&&!!v.querySelector("#nutrition .filtre-alim"));
+ok("A1 plus de grandes cartes Seance aleatoire / Composer sur l'accueil",!v.querySelector("#alea")&&!/Composer ma séance/.test(v.innerText.replace(/Composer ma séance : choisir/,"")));
+var ex=v.querySelectorAll(".exo");ok("A1 "+ex.length+" exercices avec illustration ou planche reelle (pas d'initiales) et bouton Valider etiquete",ex.length>0&&[].every.call(ex,function(x){return x.querySelector(".vignette img")&&/Valider : /.test(x.querySelector("[data-valider]").getAttribute("aria-label"))}));
+ok("A1 Changer de seance: deux boutons cote a cote Aleatoire et Composer",(function(){var b=v.querySelectorAll("#changer .duo .bouton");if(b.length!==2)return false;var r0=b[0].getBoundingClientRect(),r1=b[1].getBoundingClientRect();return b[0].textContent==="Aléatoire"&&b[1].textContent==="Composer"&&Math.abs(r0.top-r1.top)<2&&r0.height>=44&&b[0].getAttribute("aria-label")&&b[1].getAttribute("aria-label")})());
+ok("A1 navigation basse inchangee",same([].map.call(document.querySelectorAll("nav.bas a"),function(a){return a.textContent}),["Accueil","Exercices","Repas","Historique","Profil"]));
+var b=v.querySelector('[data-valider]');var id=b.getAttribute("data-valider");b.click();await sleep(150);
+ok("A1 Valider depuis l'accueil: enregistre et reste sur l'accueil",location.hash==="#/aujourdhui"&&JSON.stringify(PROF().valides).indexOf(id)!==-1&&!!document.querySelector("#changer"));
+''')
+build('A2',ACC,'''
+location.hash="#/aujourdhui";await sleep(250);document.querySelector('#changer a[href="#/aleatoire"]').click();await sleep(250);
+ok("A2 Aleatoire ouvre l'ecran dedie",location.hash==="#/aleatoire"&&/Séance aléatoire/.test(document.querySelector("#vue h2").textContent)&&!!document.querySelector('a[href="#/aujourdhui"]'));
+document.querySelector("[data-alea]").click();await sleep(300);var p=PROF(),a=p.aleatoire;
+ok("A2 generation: etat quotidien conserve (exercices et repas du jour)",a&&a.date===%s&&a.exos.length>0&&a.repas.length>0&&location.hash==="#/aleatoire");
+var t=document.getElementById("alea").innerText;
+ok("A2 ecran: exercices, repas associes, regenerer, lancement guide",document.querySelectorAll("#alea .exo").length===a.exos.length&&/Repas de la journée/.test(t)&&/Régénérer/.test(t)&&!!document.querySelector('[data-guide="seance-alea"]'));
+var id=document.querySelector("#alea [data-valider]").getAttribute("data-valider");document.querySelector("#alea [data-valider]").click();await sleep(200);
+ok("A2 Valider sur l'ecran aleatoire: enregistre et reste sur cet ecran",location.hash==="#/aleatoire"&&!!document.getElementById("alea")&&JSON.stringify(PROF().valides).indexOf(id)!==-1);
+var avant=JSON.stringify(PROF().aleatoire);document.querySelector("[data-alea]").click();await sleep(300);
+ok("A2 Regenerer: nouvelle seance, toujours sur l'ecran dedie",location.hash==="#/aleatoire"&&!!PROF().aleatoire.exos.length);
+document.querySelector('[data-guide="seance-alea"]').click();await sleep(200);
+ok("A2 lancement guide de la seance aleatoire",!!document.getElementById("guide-ses"));
+document.querySelector('#guide-ses [data-guide="sess-close"]').click();await sleep(200);
+location.hash="#/aujourdhui";await sleep(250);
+ok("A2 accueil: seance aleatoire plus au milieu, mais signalee dans Changer de seance",!document.getElementById("alea")&&/Séance aléatoire du jour prête/.test(document.getElementById("changer").innerText));
+location.hash="#/aleatoire";await sleep(200);
+ok("A2 navigation: Accueil marque courant",document.querySelector('nav.bas a[data-nav="aujourdhui"]').getAttribute("aria-current")==="page");
+''' % "new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10)")
+build('A3',ACC,'''
+location.hash="#/aujourdhui";await sleep(250);document.querySelector('#changer a[href="#/composer"]').click();await sleep(250);
+ok("A3 Composer ouvre l'ecran de composition",location.hash==="#/composer"&&/Composer ma séance/.test(document.querySelector("#vue h2").textContent));
+document.querySelector('[data-perso="pompes"]').click();await sleep(150);location.hash="#/aujourdhui";await sleep(250);
+ok("A3 seance composee lancable depuis Changer de seance",!!document.querySelector('#changer [data-guide="seance-perso"]'));
+location.hash="#/repas";await sleep(250);ok("A3 repas du jour toujours accessibles avec rappel du filtre",document.querySelectorAll(".repas").length>0&&!!document.querySelector(".filtre-alim"));
+''')
 # ===== runr.sh
 # R=$1; shift; for n in "$@"; do echo "== $n"; google-chrome --headless=new --no-sandbox --disable-gpu --window-size=360,640 --virtual-time-budget=150000 --dump-dom file://$R/site/_r_$n.html 2>/dev/null | grep -o 'data-log="[^"]*"' | sed 's/ || /\n  /g;s/data-log="/  /;s/"$//'; done

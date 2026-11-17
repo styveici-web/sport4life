@@ -576,7 +576,7 @@
   }
   function blocAleatoire(p, faits) {
     var a = p.aleatoire && p.aleatoire.date === aujourdhui() ? p.aleatoire : null;
-    var h = '<div class="carte verre" id="alea"><h3>Séance aléatoire</h3>';
+    var h = '<div class="carte verre" id="alea">';
     h += '<p class="doux">Un exercice par groupe musculaire, tiré au hasard dans ta bibliothèque selon ton matériel, avec des repas pour la prise de masse.</p>';
     h += '<button data-alea="1">' + (a ? "Régénérer" : "Générer une séance aléatoire") + "</button>";
     if (a) {
@@ -751,16 +751,6 @@
   function estMin(liste) {
     return window.S4Guide && window.S4Guide.estimer ? Math.max(1, Math.round(window.S4Guide.estimer(liste) / 60)) : 0;
   }
-  function blocComposer(p) {
-    var liste = persoListe(p), n = liste.length, est = n ? estMin(liste) : 0;
-    var h = '<div class="carte verre"><h3>Composer ma séance</h3>';
-    h += '<p class="doux">Choisis toi-même tes exercices, parmi ceux que ton lieu et ton matériel permettent. La séance guidée les enchaîne comme d\'habitude, avec échauffement et étirements.</p>';
-    if (n) {
-      h += '<button class="cta-seance" data-guide="seance-perso"><span class="cta-play" aria-hidden="true"></span><span class="cta-txt"><strong>Lancer ma séance composée</strong><small>' + n + " exercice" + (n > 1 ? "s" : "") + (est ? " · ≈ " + est + " min" : "") + " · guidage voix et minuteur</small></span></button>";
-    }
-    h += ' <button class="second" data-composer="1" style="margin-top:10px">' + (n ? "Modifier mes exercices" : "Choisir mes exercices") + "</button></div>";
-    return h;
-  }
   function vueComposer() {
     var p = profil(), x = persoDuJour(p), choisis = x ? x.exos : [];
     var h = '<p><a href="#/aujourdhui">← Aujourd\'hui</a></p><h2>Composer ma séance</h2>';
@@ -783,39 +773,56 @@
     vue.innerHTML = h;
   }
 
+  // ---------- Accueil (v33, allégé) ----------
+  // Ordre : séance du jour, échauffement (replié), séance proposée, retour au calme (replié), changer de séance, nutrition (repliée).
+  function blocChanger(p) {
+    var j = aujourdhui(), al = p.aleatoire && p.aleatoire.date === j ? p.aleatoire : null, perso = persoListe(p), n = perso.length;
+    var h = '<div class="carte verre" id="changer"><h3>Changer de séance</h3><p class="doux">Envie d\'autre chose que la séance proposée ?</p>';
+    h += '<div class="duo"><a class="bouton second" href="#/aleatoire" aria-label="Séance aléatoire : tirer une séance au hasard">Aléatoire</a><a class="bouton second" href="#/composer" aria-label="Composer ma séance : choisir mes exercices">Composer</a></div>';
+    if (al) h += '<p class="doux petit" style="margin-top:10px">Séance aléatoire du jour prête (' + al.exos.length + " exercice" + (al.exos.length > 1 ? "s" : "") + '). <a href="#/aleatoire">L\'ouvrir</a></p>';
+    if (n) {
+      var est = estMin(perso);
+      h += '<button class="cta-seance" style="margin-top:10px" data-guide="seance-perso"><span class="cta-play" aria-hidden="true"></span><span class="cta-txt"><strong>Lancer ma séance composée</strong><small>' + n + " exercice" + (n > 1 ? "s" : "") + (est ? " · ≈ " + est + " min" : "") + " · guidage voix</small></span></button>";
+    }
+    return h + "</div>";
+  }
+  function vueAleatoire() {
+    var p = profil(), faits = p.valides[aujourdhui()] || [];
+    vue.innerHTML = '<p><a href="#/aujourdhui">← Aujourd\'hui</a></p><h2>Séance aléatoire</h2>' + blocAleatoire(p, faits);
+  }
   function vueAujourdhui() {
     var p = profil(), s = seance(p), jour = aujourdhui();
     var faits = p.valides[jour] || [];
     var nbFaits = s.liste.filter(function (e) { return faits.indexOf(e.id) !== -1; }).length;
     var h = alerteHtml() + "<h2>Séance du jour</h2>";
-    h += '<div class="carte verre"><p class="doux">' + esc(new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })) + "</p>";
+    h += '<div class="carte verre" id="seance-jour"><p class="doux">' + esc(new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })) + "</p>";
     h += "<h3>Focus : " + esc(s.focus) + "</h3>";
-    h += '<p class="doux">Exercices choisis selon ton matériel (' + p.materiel.length + " sélectionné" + (p.materiel.length > 1 ? "s" : "") + "). " + nbFaits + "/" + s.liste.length + " validé" + (nbFaits > 1 ? "s" : "") + ".</p>";
+    h += '<p class="doux">' + s.liste.length + " exercice" + (s.liste.length > 1 ? "s" : "") + " choisis selon ton matériel · " + nbFaits + "/" + s.liste.length + " validé" + (nbFaits > 1 ? "s" : "") + ".</p>";
     if (window.S4Guide && s.liste.length) {
-      var est = window.S4Guide.estimer ? Math.max(1, Math.round(window.S4Guide.estimer(s.liste) / 60)) : 0;
-      h += '<button class="cta-seance" data-guide="seance-jour"><span class="cta-play" aria-hidden="true"></span><span class="cta-txt"><strong>Lancer la séance guidée</strong><small>' + s.liste.length + " exercices" + (est ? " · ≈ " + est + " min" : "") + " · échauffement et étirements guidés</small></span></button>";
+      var est = estMin(s.liste);
+      h += '<button class="cta-seance" data-guide="seance-jour"><span class="cta-play" aria-hidden="true"></span><span class="cta-txt"><strong>Lancer la séance guidée</strong><small>' + s.liste.length + " exercices" + (est ? " · ≈ " + est + " min" : "") + " · guidage voix</small></span></button>";
     }
     h += "</div>";
-    h += blocAleatoire(p, faits);
-    h += blocComposer(p);
     var grp = groupesSeance(s.liste, s.focus);
     h += blocEchauffement(p, grp);
-    h += '<h3 style="margin:6px 4px 10px">Séance proposée</h3>';
+    h += '<h3 id="seance-proposee" style="margin:6px 4px 10px">Séance proposée</h3>';
     s.liste.forEach(function (e) {
       var fait = faits.indexOf(e.id) !== -1;
       h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div>" + infoSeries(p, e) + "</div>" +
-        '<button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
+        '<button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '" aria-label="' + (fait ? "Validé : " : "Valider : ") + esc(e.nom) + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
     });
     h += blocRetourCalme(grp);
+    h += blocChanger(p);
     var n = besoins(p);
-    h += '<div class="carte verre"><h3>Nutrition pour la prise de masse</h3>';
+    h += '<details class="carte verre" id="nutrition"><summary><strong>Nutrition</strong> <span class="doux">' + (n ? "≈ " + n.cible + " kcal · " + n.proteines + " g de protéines par jour" : "besoins à estimer (profil incomplet)") + "</span></summary>";
     if (n) {
-      h += '<p><span class="kcal">' + n.cible + ' kcal</span> par jour<br>Protéines : environ ' + n.proteines + " g par jour</p>" +
+      h += '<p style="margin-top:10px"><span class="kcal">' + n.cible + ' kcal</span> par jour<br>Protéines : environ ' + n.proteines + " g par jour</p>" +
         '<p class="doux">Estimation : dépense d\'entretien d\'environ ' + n.entretien + " kcal (formule de Mifflin-St Jeor) + 300 kcal. Protéines : 1,6 g par kg de poids.</p>";
     } else {
-      h += "<p>Renseigne ta taille, ton poids, ton âge et ton sexe dans le <a href=\"#/profil\">profil</a> pour estimer tes besoins.</p>";
+      h += "<p style=\"margin-top:10px\">Renseigne ta taille, ton poids, ton âge et ton sexe dans le <a href=\"#/profil\">profil</a> pour estimer tes besoins.</p>";
     }
-    h += '<div class="alerte">Estimation indicative, pas un avis médical. Valeurs d\'après la table ANSES-CIQUAL 2025 (aliments génériques, pour 100 g), calculées sur les grammes indiqués ; les poids d\'unité sont des repères ; les recettes ne sont pas validées par un professionnel de santé.</div></div>';
+    h += '<p><a class="bouton second" href="#/repas">Voir les repas du jour</a></p>' + rappelFiltre(p);
+    h += '<div class="alerte">Estimation indicative, pas un avis médical. Valeurs d\'après la table ANSES-CIQUAL 2025 (aliments génériques, pour 100 g), calculées sur les grammes indiqués ; les poids d\'unité sont des repères ; les recettes ne sont pas validées par un professionnel de santé.</div></details>';
     vue.innerHTML = h;
   }
 
@@ -1166,13 +1173,14 @@
       sauver(); vueRepas(); return;
     }
     if (t.dataset.alea) {
-      p.aleatoire = genererAleatoire(p); sauver(); vueAujourdhui();
-      var bloc = document.getElementById("alea"); if (bloc) bloc.scrollIntoView({ block: "start" });
+      // La séance aléatoire a son propre écran (même état quotidien qu'avant).
+      p.aleatoire = genererAleatoire(p); sauver();
+      if (location.hash !== "#/aleatoire") location.hash = "#/aleatoire"; else { vueAleatoire(); window.scrollTo(0, 0); }
     } else if (t.dataset.valider) {
       var j = aujourdhui(); p.valides[j] = p.valides[j] || [];
       var i = p.valides[j].indexOf(t.dataset.valider);
       if (i === -1) p.valides[j].push(t.dataset.valider); else p.valides[j].splice(i, 1);
-      sauver(); vueAujourdhui();
+      sauver(); var y = window.scrollY; route(true); window.scrollTo(0, y);
     } else if (t.dataset.groupe) { vueExercices.filtre = t.dataset.groupe; vueExercices();
     } else if (t.dataset.bascule) { vueExercices.tout = !vueExercices.tout; vueExercices();
     } else if (t.dataset.nouveau) {
@@ -1233,7 +1241,7 @@
   }
   // Accès en lecture pour les tests automatisés (dev/v33-tests.txt).
   window.S4Repas = { generer: function (p) { return genererRepas(p || profil()); }, compatibles: function (p) { return repasCompatibles(p || profil()).map(function (r) { return r.id; }); }, alimValide: alimValide };
-  function route() {
+  function route(garderPosition) {
     var h = location.hash.replace(/^#\/?/, "") || "aujourdhui";
     var parts = h.split("/"), nav = parts[0];
     if (!profil()) {
@@ -1243,7 +1251,7 @@
     }
     document.getElementById("profil-actif").textContent = profil().nom;
     [].forEach.call(document.querySelectorAll("[data-nav]"), function (a) {
-      if (a.dataset.nav === (nav === "exercice" ? "exercices" : nav === "composer" ? "aujourdhui" : nav)) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+      if (a.dataset.nav === (nav === "exercice" ? "exercices" : nav === "composer" || nav === "aleatoire" ? "aujourdhui" : nav)) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
     if (nav === "exercices") vueExercices();
     else if (nav === "exercice") vueExercice(parts[1]);
@@ -1251,9 +1259,10 @@
     else if (nav === "historique") vueHistorique();
     else if (nav === "profil") vueProfil();
     else if (nav === "composer") vueComposer();
+    else if (nav === "aleatoire") vueAleatoire();
     else vueAujourdhui();
-    window.scrollTo(0, 0);
+    if (!garderPosition) window.scrollTo(0, 0);
   }
-  window.addEventListener("hashchange", route);
+  window.addEventListener("hashchange", function () { route(); });
   route();
 })();
