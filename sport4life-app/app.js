@@ -269,8 +269,9 @@
   }
 
 
-  var V = "28";
+  var V = "29";
   function vignette(e) {
+    if (window.S4L && S4L.thumb(e)) return '<div class="vignette illu" aria-hidden="true"><img src="' + S4L.thumb(e) + '" alt="" width="52" height="52"></div>';
     if (window.IMGS && window.IMGS[e.id]) return '<div class="vignette photo" aria-hidden="true"><img src="' + window.IMGS[e.id] + '" alt="" width="52" height="52"></div>';
     return '<div class="vignette" aria-hidden="true">' + ICONES[e.groupe] + "</div>";
   }
@@ -699,8 +700,10 @@
     if (!e) { location.hash = "#/exercices"; return; }
     var h = '<p><a href="#/exercices">← Exercices</a></p><h2>' + esc(e.nom) + "</h2>";
     var ph = window.PHOTOS && window.PHOTOS[e.id];
-    if (ph && window.IMGS && window.IMGS[e.id]) h += '<figure class="photo-exo verre"><img src="' + window.IMGS[e.id] + '" alt="' + esc(e.nom) + '" width="520" height="390"><figcaption>Photo : ' + esc(ph.auteur) + ' / <a href="https://www.pexels.com/photo/' + ph.pexels + '/" target="_blank" rel="noopener">Pexels</a></figcaption></figure>';
+    if (window.S4L && S4L.has(e)) h += '<div class="illu-exo verre">' + S4L.mouv(e) + '</div>';
+    else if (ph && window.IMGS && window.IMGS[e.id]) h += '<figure class="photo-exo verre"><img src="' + window.IMGS[e.id] + '" alt="' + esc(e.nom) + '" width="520" height="390"><figcaption>Photo : ' + esc(ph.auteur) + ' / <a href="https://www.pexels.com/photo/' + ph.pexels + '/" target="_blank" rel="noopener">Pexels</a></figcaption></figure>';
     else h += '<div class="image-ph verre" role="img" aria-label="Pas de photo"><div>Photo<small>Pas de photo pour ce mouvement pour l\'instant.</small></div></div>';
+    if (window.S4L) h += '<div class="illu-exo verre">' + S4L.mus(e) + '</div>';
     var pf = profil(), serie = seriesOverride;
     if (!serie) {
       var auj = pf.journal[aujourdhui()] && pf.journal[aujourdhui()][e.id], der = derniereSeance(pf, e.id);
