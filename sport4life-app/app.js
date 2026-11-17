@@ -29,7 +29,7 @@
     return {
       id: uid(), nom: "Exemple : capoeiriste", taille: "", poids: "", age: "", sexe: "", activite: "1.55",
       note: "Capoeira 2 fois par semaine depuis 10 ans, entraînement surtout au poids du corps.",
-      materiel: ["corps", "halteres", "disques", "elastique", "abwheel", "corde", "medball", "gilet"], migre3: true,
+      materiel: ["corps", "halteres", "disques", "elastique", "abwheel", "corde", "medball", "gilet"], migre3: true, lieu: "lesdeux",
       valides: {}, poidsLog: [], journal: {}
     };
   }
@@ -48,6 +48,11 @@
     }
     ["nom", "taille", "poids", "age", "sexe", "note"].forEach(function (k) { if (p[k] == null) p[k] = ""; });
     if (!p.activite) p.activite = "1.55";
+    if (!p.lieu) p.lieu = "lesdeux";
+    // v32 : "autre" éclate en chaise/banc et barre de traction. Ajout seulement, rien n'est retiré.
+    if (p.materiel.indexOf("autre") !== -1) {
+      ["banc", "barre"].forEach(function (m) { if (p.materiel.indexOf(m) === -1) p.materiel.push(m); });
+    }
     return p;
   }
   var alerteDonnees = false;
@@ -223,6 +228,8 @@
   }
   function faisable(exo, p) {
     var dispo = p.materiel.concat(["corps"]);
+    if (dispo.indexOf("halteres-reglables") !== -1) dispo.push("halteres");
+    if (exo.lieux && p.lieu && p.lieu !== "lesdeux" && exo.lieux.indexOf(p.lieu) === -1) return false;
     return exo.requis.every(function (r) { return dispo.indexOf(r) !== -1; });
   }
   function nomMateriel(id) {
@@ -269,7 +276,7 @@
   }
 
 
-  var V = "31";
+  var V = "32";
   function vignette(e) {
     // v31 : miniature claire et lisible (dessin du mouvement, sinon planche musculaire face ou dos), fournie par guide.js.
     if (window.S4L && S4L.vig) return S4L.vig(e);
@@ -415,6 +422,10 @@
     h += '<label for="activite">Niveau d\'activité</label><select id="activite">' + ACTIVITES.map(function (x) {
       return '<option value="' + x[0] + '"' + (p.activite === x[0] ? " selected" : "") + ">" + x[1] + "</option>";
     }).join("") + "</select>";
+    h += '<h3 style="margin-top:16px">Où t\'entraînes-tu ?</h3><select id="lieu">' +
+      [["lesdeux", "Aux deux endroits"], ["maison", "À la maison"], ["exterieur", "En extérieur"]].map(function (x) {
+        return '<option value="' + x[0] + '"' + ((p.lieu || "lesdeux") === x[0] ? " selected" : "") + ">" + x[1] + "</option>";
+      }).join("") + "</select>";
     h += '<h3 style="margin-top:16px">Matériel disponible</h3><div class="puces">';
     MATERIEL.forEach(function (m) {
       var coche = m.id === "corps" || p.materiel.indexOf(m.id) !== -1;
@@ -636,6 +647,49 @@
     }
   };
 
+  // ---------- Composer ma séance ----------
+  function persoDuJour(p) {
+    return p.perso && p.perso.date === aujourdhui() ? p.perso : null;
+  }
+  function persoListe(p) {
+    var x = persoDuJour(p);
+    return x ? x.exos.map(exoParId).filter(Boolean) : [];
+  }
+  function estMin(liste) {
+    return window.S4Guide && window.S4Guide.estimer ? Math.max(1, Math.round(window.S4Guide.estimer(liste) / 60)) : 0;
+  }
+  function blocComposer(p) {
+    var liste = persoListe(p), n = liste.length, est = n ? estMin(liste) : 0;
+    var h = '<div class="carte verre"><h3>Composer ma séance</h3>';
+    h += '<p class="doux">Choisis toi-même tes exercices, parmi ceux que ton lieu et ton matériel permettent. La séance guidée les enchaîne comme d\'habitude, avec échauffement et étirements.</p>';
+    if (n) {
+      h += '<button class="cta-seance" data-guide="seance-perso"><span class="cta-play" aria-hidden="true"></span><span class="cta-txt"><strong>Lancer ma séance composée</strong><small>' + n + " exercice" + (n > 1 ? "s" : "") + (est ? " · ≈ " + est + " min" : "") + " · guidage voix et minuteur</small></span></button>";
+    }
+    h += ' <button class="second" data-composer="1" style="margin-top:10px">' + (n ? "Modifier mes exercices" : "Choisir mes exercices") + "</button></div>";
+    return h;
+  }
+  function vueComposer() {
+    var p = profil(), x = persoDuJour(p), choisis = x ? x.exos : [];
+    var h = '<p><a href="#/aujourdhui">← Aujourd\'hui</a></p><h2>Composer ma séance</h2>';
+    h += '<p class="doux">Voici les exercices faisables avec ton matériel' + (p.lieu === "maison" ? ", à la maison" : p.lieu === "exterieur" ? ", en extérieur" : "") + '. Touche un exercice pour l\'ajouter ou le retirer. Ta sélection est gardée pour aujourd\'hui seulement.</p>';
+    var liste = persoListe(p);
+    if (liste.length) {
+      var est = estMin(liste);
+      h += '<div class="carte verre"><button class="cta-seance" data-guide="seance-perso"><span class="cta-play" aria-hidden="true"></span><span class="cta-txt"><strong>Lancer ma séance composée</strong><small>' + liste.length + " exercice" + (liste.length > 1 ? "s" : "") + (est ? " · ≈ " + est + " min" : "") + " · échauffement et étirements guidés</small></span></button></div>";
+    }
+    GROUPES.forEach(function (g) {
+      var exos = EXERCICES.filter(function (e) { return e.groupe === g && faisable(e, p); });
+      if (!exos.length) return;
+      h += "<h3>" + g + "</h3>";
+      exos.forEach(function (e) {
+        var on = choisis.indexOf(e.id) !== -1;
+        h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div></div>" +
+          '<button class="' + (on ? "" : "second") + '" data-perso="' + e.id + '" aria-pressed="' + on + '">' + (on ? "Choisi ✓" : "Ajouter") + "</button></div>";
+      });
+    });
+    vue.innerHTML = h;
+  }
+
   function vueAujourdhui() {
     var p = profil(), s = seance(p), jour = aujourdhui();
     var faits = p.valides[jour] || [];
@@ -650,6 +704,7 @@
     }
     h += "</div>";
     h += blocAleatoire(p, faits);
+    h += blocComposer(p);
     var grp = groupesSeance(s.liste, s.focus);
     h += blocEchauffement(p, grp);
     h += '<h3 style="margin:6px 4px 10px">Séance proposée</h3>';
@@ -805,189 +860,11 @@
       });
     }).catch(function () { msgRappel("Le rappel n\'a pas pu être programmé."); });
   }
-  // ---------- Ma montre (Garmin, lecture seule, appli Android) ----------
-  // La clé API reste dans le stockage sécurisé Android (Keystore), jamais dans localStorage,
-  // ni dans l'export du profil. Les mesures ne sont pas enregistrées : elles restent en mémoire le temps de l'affichage.
-  var GARMIN = "https://personal.connectapi.garmin.com", CLE_SECURE = "s4_garmin_cle";
-  var montreJeton = null, montreEtat = { msg: "", data: null, charge: false };
-  function plug(nom) {
-    try {
-      var C = window.Capacitor; if (!C) return null;
-      // Sans bundler, le pont natif expose les plugins dans Capacitor.Plugins (comme LocalNotifications).
-      if (C.Plugins && C.Plugins[nom]) return C.Plugins[nom];
-      return C.registerPlugin ? C.registerPlugin(nom) : null;
-    } catch (e) { return null; }
-  }
-  function detailErr(e) {
-    if (!e) return "inconnu";
-    var c = e.code ? String(e.code) : "", m = e.errorMessage || e.message || (typeof e === "string" ? e : "");
-    var d = (c + " " + String(m)).replace(/[^\w .:()\-]/g, "").replace(/\s+/g, " ").trim().slice(0, 140);
-    return d || "inconnu";
-  }
-  // Clé gardée uniquement dans le Keystore Android. Option explicite : clé en mémoire pour la session, jamais écrite.
-  var cleSession = null;
-  function coffreLire() {
-    if (cleSession) return Promise.resolve(cleSession);
-    var s = plug("SecureStorage");
-    if (!s) return Promise.reject(new Error("coffre"));
-    return Promise.resolve().then(function () { return s.internalGetItem({ prefixedKey: CLE_SECURE, sync: false }); }).then(function (r) { return r && r.data ? String(r.data) : null; });
-  }
-  function coffreEcrire(v) {
-    var s = plug("SecureStorage");
-    if (!s) return Promise.reject(new Error("plugin absent"));
-    return Promise.resolve().then(function () { return s.internalSetItem({ prefixedKey: CLE_SECURE, data: v, sync: false }); });
-  }
-  // Diagnostic sans secret : écrit, relit et supprime une valeur factice pour voir si le Keystore marche du tout.
-  function sondeCoffre() {
-    var s = plug("SecureStorage"), dispo = "?";
-    try { dispo = window.Capacitor && window.Capacitor.isPluginAvailable ? String(window.Capacitor.isPluginAvailable("SecureStorage")) : "?"; } catch (e) {}
-    if (!s) return Promise.resolve("plugin " + dispo + ", proxy absent (Plugins:" + (window.Capacitor && window.Capacitor.Plugins ? Object.keys(window.Capacitor.Plugins).join(",").slice(0, 120) : "aucun") + ")");
-    var K = "s4_sonde", etape = "ecriture";
-    return s.internalSetItem({ prefixedKey: K, data: "test", sync: false }).then(function () {
-      etape = "lecture"; return s.internalGetItem({ prefixedKey: K, sync: false });
-    }).then(function (r) {
-      var ok = r && r.data === "test"; etape = "suppression";
-      return s.internalRemoveItem({ prefixedKey: K, sync: false }).then(function () { return "plugin " + dispo + ", test factice " + (ok ? "OK" : "relecture differente"); });
-    }).catch(function (e) { return "plugin " + dispo + ", test factice echec a " + etape + " : " + detailErr(e); });
-  }
-  function coffreEffacer() {
-    cleSession = null;
-    var s = plug("SecureStorage");
-    if (!s) return Promise.resolve();
-    return Promise.resolve().then(function () { return s.internalRemoveItem({ prefixedKey: CLE_SECURE, sync: false }); });
-  }
-  function httpGarmin(methode, chemin, auth, accept) {
-    var h = plug("CapacitorHttp"); if (!h) return Promise.reject(new Error("http"));
-    return h.request({ url: GARMIN + chemin, method: methode, headers: { Authorization: auth, Accept: accept || "application/json" }, responseType: "text" });
-  }
-  function obtenirJeton() {
-    if (montreJeton && montreJeton.exp > Date.now()) return Promise.resolve(montreJeton.v);
-    return coffreLire().then(function (cle) {
-      if (!cle) throw new Error("pas-de-cle");
-      return httpGarmin("POST", "/personalapitoken-service/personal-api/personal-api-key/token", "ApiKey " + cle, "text/plain");
-    }).then(function (r) {
-      if (r.status !== 200) throw new Error("jeton-" + r.status);
-      var t = typeof r.data === "string" ? r.data.trim().replace(/^"|"$/g, "") : (r.data && (r.data.accessToken || r.data.access_token || r.data.token));
-      if (!t) throw new Error("jeton-vide");
-      montreJeton = { v: t, exp: Date.now() + 23 * 3600 * 1000 };
-      return t;
-    });
-  }
-  function lireGarmin(chemin, jeton) {
-    return httpGarmin("GET", chemin, "Bearer " + jeton).then(function (r) {
-      if (r.status !== 200) return null;
-      try { return typeof r.data === "string" ? (r.data ? JSON.parse(r.data) : null) : r.data; } catch (e) { return null; }
-    }).catch(function () { return null; });
-  }
-  function chargerMontre() {
-    montreEtat.charge = true; montreEtat.msg = "Chargement…"; vueMontre();
-    var j = aujourdhui(), d = new Date(); d.setDate(d.getDate() - 6);
-    var j0 = d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
-    return obtenirJeton().then(function (t) {
-      return Promise.all([
-        lireGarmin("/usersummary-service/usersummary/daily?calendarDate=" + j, t),
-        lireGarmin("/sleep-service/sleep/dailySleep?date=" + j, t),
-        lireGarmin("/wellness-service/wellness/dailyHeartRate?date=" + j, t),
-        lireGarmin("/usersummary-service/stats/stress/daily/" + j0 + "/" + j, t),
-        lireGarmin("/wellness-service/wellness/bodyBattery/reports/daily?startDate=" + j0 + "&endDate=" + j, t),
-        lireGarmin("/activitylist-service/activities/search/activities?start=0&limit=5", t)
-      ]);
-    }).then(function (r) {
-      montreEtat.data = { jour: r[0], sommeil: r[1], fc: r[2], stress: r[3], bb: r[4], act: r[5] };
-      montreEtat.msg = r.every(function (x) { return x === null; }) ? "Garmin n'a renvoyé aucune donnée. Réessaie après une synchronisation de la montre." : "";
-    }).catch(function (e) {
-      var m = String(e && e.message || "");
-      montreEtat.data = null;
-      if (m === "pas-de-cle") montreEtat.msg = "Colle d'abord ta clé API Garmin ci-dessous.";
-      else if (m === "coffre") montreEtat.msg = "Le stockage sécurisé Android n'est pas disponible : la clé n'est pas utilisée.";
-      else if (m === "http") montreEtat.msg = "La connexion native n'est pas disponible dans cette version (plugin HTTP absent).";
-      else if (/^jeton-(400|401|403)$/.test(m)) montreEtat.msg = "Garmin refuse la clé (invalide, supprimée ou expirée). Crée-en une nouvelle dans Garmin Connect puis remplace-la ici.";
-      else montreEtat.msg = "Connexion à Garmin impossible pour le moment (réseau ou service). Détail technique : " + detailErr(e) + ".";
-    }).then(function () { montreEtat.charge = false; if (/^#\/montre/.test(location.hash)) vueMontre(); });
-  }
-  function nb(v, suf) { return (typeof v === "number" && isFinite(v)) ? Math.round(v) + (suf || "") : "—"; }
-  function hm(s) { if (typeof s !== "number" || !isFinite(s) || s <= 0) return "—"; var m = Math.round(s / 60); return Math.floor(m / 60) + " h " + ("0" + (m % 60)).slice(-2); }
-  function ligneM(lib, val) { return '<div class="ligne"><span>' + esc(lib) + "</span><strong>" + esc(val) + "</strong></div>"; }
-  function vueMontre() {
-    var h = alerteHtml() + "<h2>Ma montre</h2>";
-    h += '<p><a href="#/profil">← Retour au profil</a></p>';
-    if (!natif()) {
-      h += '<div class="carte verre"><p class="doux">Ma montre est disponible uniquement dans l\'appli Android Sport4Life. Sur le site, elle n\'est pas active.</p></div>';
-      vue.innerHTML = h; return;
-    }
-    h += '<div class="carte verre"><h3>Garmin Connect (lecture seule)</h3>';
-    h += '<p class="doux">Tes mesures viennent de Garmin Connect après la synchronisation de ta montre, pas en direct. Elles ne changent ni tes objectifs de calories ni tes charges, et ne sont pas enregistrées dans l\'appli.</p>';
-    if (montreEtat.msg) h += '<p role="status">' + esc(montreEtat.msg) + "</p>";
-    h += '<label for="garmin-cle">Clé API Garmin (Personal API Key)</label><input type="password" id="garmin-cle" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Colle la clé ici">';
-    if (montreEtat.echec) h += '<p class="doux">Option de test : utiliser la clé pour cette session seulement. Elle reste en mémoire, n\'est écrite nulle part et disparaît quand tu fermes l\'appli.</p><p><button class="second" data-montre-session="1">Utiliser pour cette session seulement</button></p>';
-    h += '<p style="margin-top:10px" class="ligne"><button data-montre-save="1">Enregistrer la clé</button><button class="second" data-montre-refresh="1">Actualiser</button></p>';
-    h += '<p class="doux">La clé est gardée dans le stockage sécurisé du téléphone (Keystore Android). Jamais en clair, ni dans l\'export de tes données, ni dans le dépôt. <button class="second" data-montre-del="1">Supprimer la clé de l\'appli</button></p></div>';
-    var D = montreEtat.data;
-    if (D) {
-      var js = D.jour || {}, sl = D.sommeil || {}, fc = D.fc || {};
-      h += '<div class="carte verre"><h3>Aujourd\'hui</h3>';
-      h += ligneM("Pas", nb(js.totalSteps) + (js.dailyStepGoal ? " / " + nb(js.dailyStepGoal) : ""));
-      h += ligneM("Calories (total / actives)", nb(js.totalKilocalories) + " / " + nb(js.activeKilocalories) + " kcal");
-      h += ligneM("Minutes d'intensité (modérée / vigoureuse)", nb(js.moderateIntensityMinutes) + " / " + nb(js.vigorousIntensityMinutes) + " min");
-      h += ligneM("FC au repos (min / max du jour)", nb(fc.restingHeartRate, " bpm") + " (" + nb(fc.minHeartRate) + " / " + nb(fc.maxHeartRate) + ")");
-      var st = Array.isArray(D.stress) && D.stress.length ? D.stress[D.stress.length - 1] : null;
-      h += ligneM("Stress moyen", st && st.values ? nb(st.values.overallStressLevel) : "—");
-      var bb = Array.isArray(D.bb) && D.bb.length ? D.bb[D.bb.length - 1] : null;
-      h += ligneM("Body Battery (chargé / dépensé)", bb ? nb(bb.charged) + " / " + nb(bb.drained) : "—");
-      h += "</div>";
-      h += '<div class="carte verre"><h3>Sommeil de la nuit</h3>';
-      h += ligneM("Durée", hm(sl.sleepTimeSeconds)) + ligneM("Profond", hm(sl.deepSleepSeconds)) + ligneM("Léger", hm(sl.lightSleepSeconds)) + ligneM("REM", hm(sl.remSleepSeconds)) + ligneM("Éveillé", hm(sl.awakeSleepSeconds));
-      h += "</div>";
-      h += '<div class="carte verre"><h3>Dernières activités</h3>';
-      var acts = Array.isArray(D.act) ? D.act : [];
-      if (!acts.length) h += '<p class="doux">Aucune activité renvoyée.</p>';
-      acts.forEach(function (a) {
-        h += '<div class="repas"><strong>' + esc(a.activityName || "Activité") + '</strong><div class="doux">' + esc(String(a.startTimeLocal || "").slice(0, 16)) + " · " + esc(a.activityType && a.activityType.typeKey || "") + "</div>";
-        h += '<div class="doux">' + hm(a.duration) + " · " + nb(a.calories, " kcal") + " · FC moy. " + nb(a.averageHR) + " / max " + nb(a.maxHR) + "</div></div>";
-      });
-      h += "</div>";
-    }
-    h += '<div class="alerte">Mesures de la montre données à titre indicatif, pas un avis médical.</div>';
-    vue.innerHTML = h;
-  }
-  function montreAction(t) {
-    if (t.dataset.montreOpen) { location.hash = "#/montre"; if (natif() && !montreEtat.data && !montreEtat.charge) chargerMontre(); return true; }
-    if (t.dataset.montreRefresh) { chargerMontre(); return true; }
-    if (t.dataset.montreSave) {
-      var z = document.getElementById("garmin-cle"), v = z ? z.value.trim() : "";
-      if (v.length < 20) { montreEtat.msg = "La clé semble incomplète. Colle la clé entière affichée par Garmin Connect."; vueMontre(); return true; }
-      z.value = "";
-      montreEtat.cleEnAttente = v;
-      coffreEcrire(v).then(function () { montreJeton = null; cleSession = null; montreEtat.cleEnAttente = null; montreEtat.echec = false; chargerMontre().then(function () { if (!montreEtat.msg) montreEtat.msg = "Clé enregistrée dans le Keystore Android."; vueMontre(); }); }).catch(function (e) {
-        var d1 = detailErr(e);
-        sondeCoffre().then(function (d2) { montreEtat.echec = true; montreEtat.msg = "Impossible d'enregistrer la clé dans le Keystore Android. La clé n'a pas été gardée. Détail technique : " + d1 + " | " + d2 + "."; vueMontre(); });
-      });
-      v = "";
-      return true;
-    }
-    if (t.dataset.montreSession) {
-      if (montreEtat.cleEnAttente) { cleSession = montreEtat.cleEnAttente; montreEtat.cleEnAttente = null; montreEtat.echec = false; montreJeton = null; montreEtat.msg = "Clé utilisée pour cette session seulement (non enregistrée)."; chargerMontre().then(function () { if (!montreEtat.msg) montreEtat.msg = "Clé utilisée pour cette session seulement (non enregistrée)."; vueMontre(); }); }
-      else { montreEtat.msg = "Colle la clé puis appuie sur Enregistrer la clé."; vueMontre(); }
-      return true;
-    }
-    if (t.dataset.montreDel) {
-      coffreEffacer().then(function () { montreJeton = null; montreEtat = { msg: "Clé supprimée de l'appli.", data: null, charge: false, echec: false }; vueMontre(); }).catch(function () { montreEtat.msg = "Suppression impossible pour le moment."; vueMontre(); });
-      return true;
-    }
-    return false;
-  }
-
   // ---------- Export / import ----------
   function blocTransfert() {
     return '<div class="carte verre"><h3>Copier mes données</h3><p class="doux">Pour passer du site à l\'appli Android (ou l\'inverse) : exporte ici, copie le texte, puis colle-le dans l\'autre et importe. L\'import ajoute les profils absents et fusionne les séances manquantes des profils déjà présents, sans rien remplacer. Les réglages du guidage et du rappel sont inclus : ils ne sont importés que s\'ils n\'existent pas déjà ici, et le rappel n\'est jamais programmé automatiquement.</p><textarea id="zone-transfert" rows="4" style="width:100%" aria-label="Données exportées ou à importer"></textarea><p style="margin-top:10px"><button class="second" data-export="1">Exporter</button> <button class="second" data-import="1">Importer</button></p><p class="doux" id="transfert-msg" role="status"></p><p class="doux">Version de l\'appli : ' + V + '</p></div>';
   }
   function transfertMsg(t) { var e = document.getElementById("transfert-msg"); if (e) e.textContent = t; }
-
-  function blocMontre() {
-    var h = '<div class="carte verre"><h3>Ma montre Garmin</h3>';
-    if (!natif()) return h + '<p class="doux">Disponible dans l\'appli Android Sport4Life uniquement.</p></div>';
-    return h + '<p class="doux">Affiche en lecture seule tes pas, ton sommeil, ta FC au repos, ta Body Battery et tes dernières activités depuis Garmin Connect.</p><button class="second" data-montre-open="1">Ouvrir Ma montre</button></div>';
-  }
 
   function vueProfil() {
     var p = profil();
@@ -1004,6 +881,10 @@
     h += '<label for="activite">Niveau d\'activité</label><select id="activite">' + ACTIVITES.map(function (a) {
       return '<option value="' + a[0] + '"' + (p.activite === a[0] ? " selected" : "") + ">" + a[1] + "</option>";
     }).join("") + "</select>";
+    h += '<h3 style="margin-top:16px">Où t\'entraînes-tu ?</h3><select id="lieu">' +
+      [["lesdeux", "Aux deux endroits"], ["maison", "À la maison"], ["exterieur", "En extérieur"]].map(function (x) {
+        return '<option value="' + x[0] + '"' + ((p.lieu || "lesdeux") === x[0] ? " selected" : "") + ">" + x[1] + "</option>";
+      }).join("") + "</select>";
     h += '<h3 style="margin-top:16px">Matériel disponible</h3><p class="doux">Les exercices s\'adaptent à ta sélection. Le poids du corps est toujours disponible.</p><div class="puces">';
     MATERIEL.forEach(function (m) {
       var coche = m.id === "corps" || p.materiel.indexOf(m.id) !== -1;
@@ -1021,7 +902,6 @@
     Object.keys(p.valides).forEach(function (k) { nbEx += p.valides[k].length; });
     h += '<div class="carte verre"><h3>Progression</h3><p>' + nbEx + " exercice" + (nbEx > 1 ? "s" : "") + " validé" + (nbEx > 1 ? "s" : "") + " sur " + nbJours + " jour" + (nbJours > 1 ? "s" : "") + '.</p></div>';
     h += '<div class="carte verre"><h3>Données</h3><p class="doux">Tes données restent dans ce navigateur, sur cet appareil. Elles ne sont envoyées nulle part. Vider le navigateur les efface.</p><button class="danger" data-supprimer="1">Supprimer ce profil</button></div>';
-    h += blocMontre();
     h += blocRappel();
     h += blocTransfert();
     h += '<div class="alerte">Sport4Life donne des conseils généraux, pas un avis médical. Sources prévues : recommandations OMS 2020 sur l\'activité physique, littérature scientifique sur l\'hypertrophie, Open Food Facts et CIQUAL/ANSES.</div>';
@@ -1032,7 +912,7 @@
     p = p || profil();
     var g = function (i) { return document.getElementById(i).value; };
     p.nom = g("nom").trim() || "Sans nom";
-    p.taille = g("taille").trim().replace(",", "."); p.poids = g("poids").trim().replace(",", "."); p.age = g("age"); p.sexe = g("sexe"); p.activite = g("activite");
+    p.taille = g("taille").trim().replace(",", "."); p.poids = g("poids").trim().replace(",", "."); p.age = g("age"); p.sexe = g("sexe"); p.activite = g("activite"); p.lieu = g("lieu");
     p.materiel = [].slice.call(document.querySelectorAll("[data-mat]")).filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute("data-mat"); });
     sauver();
     return p;
@@ -1046,7 +926,14 @@
     if (t.dataset.exemple) {
       var ex = exemple(); etat.profils.push(ex); etat.actif = ex.id; sauver(); route(); return;
     }
-    if (montreAction(t)) return;
+    if (t.dataset.composer) { location.hash = "#/composer"; return; }
+    if (t.dataset.perso) {
+      var pr = profil(), jr = aujourdhui();
+      if (!pr.perso || pr.perso.date !== jr) pr.perso = { date: jr, exos: [] };
+      var ip = pr.perso.exos.indexOf(t.dataset.perso);
+      if (ip === -1) pr.perso.exos.push(t.dataset.perso); else pr.perso.exos.splice(ip, 1);
+      sauver(); vueComposer(); return;
+    }
     if (t.dataset.rappelPerm) { rappelPerm(); return; }
     if (t.dataset.rappelSave) { rappelSauver(); return; }
     if (t.dataset.export) {
@@ -1181,6 +1068,8 @@
     window.S4Guide.sources.jour = function () { return seance(profil()).liste; };
     window.S4Guide.sources.jourTitre = function () { return "Focus " + seance(profil()).focus; };
     window.S4Guide.sources.alea = function () { var p = profil(), x = p.aleatoire && p.aleatoire.date === aujourdhui() ? p.aleatoire : null; return x ? x.exos.map(exoParId).filter(Boolean) : []; };
+    window.S4Guide.sources.perso = function () { return persoListe(profil()); };
+    window.S4Guide.sources.persoTitre = function () { return "Ma séance composée"; };
   }
   function route() {
     var h = location.hash.replace(/^#\/?/, "") || "aujourdhui";
@@ -1192,14 +1081,14 @@
     }
     document.getElementById("profil-actif").textContent = profil().nom;
     [].forEach.call(document.querySelectorAll("[data-nav]"), function (a) {
-      if (a.dataset.nav === (nav === "exercice" ? "exercices" : nav)) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+      if (a.dataset.nav === (nav === "exercice" ? "exercices" : nav === "composer" ? "aujourdhui" : nav)) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
     if (nav === "exercices") vueExercices();
     else if (nav === "exercice") vueExercice(parts[1]);
     else if (nav === "repas") vueRepas();
     else if (nav === "historique") vueHistorique();
-    else if (nav === "montre") vueMontre();
     else if (nav === "profil") vueProfil();
+    else if (nav === "composer") vueComposer();
     else vueAujourdhui();
     window.scrollTo(0, 0);
   }

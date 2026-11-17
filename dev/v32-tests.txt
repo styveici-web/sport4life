@@ -1,0 +1,105 @@
+# Sport4Life v32 - tests du catalogue elargi, du choix maison/exterieur, de "Composer ma seance"
+# et du retrait Garmin (aucun secret, aucune donnee perso).
+# Meme principe que dev/v31-tests.txt : copier sport4life-app dans <R>/site, copier index.html dans <R>/index.html,
+# puis generer les pages _c_*.html et les lancer dans Chrome headless (temps virtuel, voix et bips coupes).
+# Usage (R = dossier de travail, ex. /tmp/rec) :
+#   python3 mkses32.py <R>          -> ecrit <R>/site/_c_C1.html ... _c_C8.html
+#   sh runs.sh <R> C1 C2 ...        -> affiche OK / ECHEC pour chaque verification
+# Les tests v28 (A-I, T1) et v31 (S1-S9) restent a lancer tels quels.
+# ===== mkses32.py
+import json,sys
+R=sys.argv[1] if len(sys.argv)>1 else '/tmp/rec'
+idx=open(R+'/index.html').read()
+PRE='''<script>
+window.Capacitor={Plugins:{LocalNotifications:{schedule:function(){return Promise.resolve()},requestPermissions:function(){return Promise.resolve({display:"granted"})},checkPermissions:function(){return Promise.resolve({display:"granted"})},cancel:function(){return Promise.resolve()},createChannel:function(){return Promise.resolve()}}}};
+window.LOGS=[];function L(k,v){LOGS.push(k+": "+(v===true?"OK":v===false?"ECHEC":v));}
+function ok(k,c){L(k,!!c);}
+window.confirm=function(){return true};window.alert=function(){};
+function LS(k){return localStorage.getItem(k);}
+function PROF(){return JSON.parse(LS("sport4life.v1")).profils[0];}
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+function fin(){document.documentElement.setAttribute("data-log",LOGS.join(" || "));}
+function O(){return document.getElementById("guide-ses");}
+function T(){var o=O();return o?o.innerText.replace(/\\s+/g," "):"";}
+function G(a){var b=document.querySelector('[data-guide="'+a+'"]');if(b)b.click();return !!b;}
+function ex(id){return EXERCICES.filter(function(e){return e.id===id})[0];}
+function seed(guide,prof){localStorage.clear();var p=prof||{id:"p1",nom:"Fixture C",materiel:["corps"],journal:{},valides:{},poidsLog:[]};localStorage.setItem("sport4life.v1",JSON.stringify({actif:"p1",profils:[p]}));localStorage.setItem("sport4life.guide",JSON.stringify(guide));}
+</script>'''
+G0={"voix":False,"bip":False,"tempo":3,"p":{"planche":{"duree":5}},"repos":30,"trans":10,"auto":False,"ech":False}
+TOUT=["corps","banc","barre","halteres","halteres-reglables","disques","elastique","kettlebell","abwheel","corde","medball","gilet","sangles","step","swissball","autre"]
+def build(name,guide,prof,body):
+    h=idx.replace('<script src="data/exercises.js',PRE+'<script>seed('+json.dumps(guide)+','+json.dumps(prof)+');</script>\n<script src="data/exercises.js',1)
+    h=h.replace('</body>','<script>window.addEventListener("load",async function(){try{await sleep(300);'+body+'}catch(e){L("EXCEPTION",String(e&&e.stack||e))}fin();});</script></body>')
+    open(R+'/site/_c_%s.html'%name,'w').write(h)
+# C1 migration : ancien profil avec "autre" et sans lieu
+build('C1',G0,{"id":"p1","nom":"Ancien","materiel":["corps","autre"],"migre3":True,"journal":{},"valides":{},"poidsLog":[]},'''
+location.hash="#/profil";await sleep(250);
+ok("C1 lieu par defaut aux deux endroits",document.getElementById("lieu").value==="lesdeux");
+ok("C1 autre conserve",document.querySelector('[data-mat="autre"]').checked);
+ok("C1 banc et barre coches",document.querySelector('[data-mat="banc"]').checked&&document.querySelector('[data-mat="barre"]').checked);
+ok("C1 corps coche",document.querySelector('[data-mat="corps"]').checked);
+''')
+# C2 filtre de lieu : course a pied seulement dehors
+build('C2',G0,{"id":"p1","nom":"Lieu","materiel":TOUT,"lieu":"maison","migre3":True,"journal":{},"valides":{},"poidsLog":[]},'''
+location.hash="#/composer";await sleep(200);
+ok("C2 course a pied absente a la maison",!document.querySelector('[data-perso="course-a-pied"]'));
+ok("C2 pompes presentes a la maison",!!document.querySelector('[data-perso="pompes"]'));
+location.hash="#/profil";await sleep(200);
+var sel=document.getElementById("lieu");ok("C2 selecteur de lieu dans le profil",!!sel);
+sel.value="exterieur";sel.closest("form").dispatchEvent(new Event("submit",{cancelable:true,bubbles:true}));await sleep(200);
+ok("C2 lieu enregistre",PROF().lieu==="exterieur");
+location.hash="#/composer";await sleep(200);
+ok("C2 course a pied presente en exterieur",!!document.querySelector('[data-perso="course-a-pied"]'));
+''')
+# C3 halteres reglables = haltères
+build('C3',G0,{"id":"p1","nom":"Regl","materiel":["corps","halteres-reglables"],"lieu":"lesdeux","migre3":True,"journal":{},"valides":{},"poidsLog":[]},'''
+location.hash="#/composer";await sleep(200);
+ok("C3 halteres-reglables donne acces aux exercices halteres",!!document.querySelector('[data-perso="developpe-halteres"]'));
+ok("C3 mais pas au banc",!document.querySelector('[data-perso="presse-poitrine-banc"]'));
+''')
+# C4 composer : ajout / retrait, persistance du jour
+build('C4',G0,{"id":"p1","nom":"Compo","materiel":TOUT,"lieu":"lesdeux","migre3":True,"journal":{},"valides":{},"poidsLog":[]},'''
+location.hash="#/composer";await sleep(200);
+var b=document.querySelector('[data-perso="pompes"]');b.click();await sleep(150);
+var q=PROF();ok("C4 exercice ajoute et date du jour",q.perso&&q.perso.exos.indexOf("pompes")!==-1&&/^\d{4}-\d{2}-\d{2}$/.test(q.perso.date));
+ok("C4 bouton devient Choisi",/Choisi/.test(document.querySelector('[data-perso="pompes"]').textContent));
+document.querySelector('[data-perso="pompes"]').click();await sleep(150);
+ok("C4 retrait",PROF().perso.exos.indexOf("pompes")===-1);
+''')
+# C5 lancement de la seance composee
+build('C5',G0,{"id":"p1","nom":"Lance","materiel":TOUT,"lieu":"lesdeux","migre3":True,"journal":{},"valides":{},"poidsLog":[]},'''
+location.hash="#/composer";await sleep(200);
+document.querySelector('[data-perso="pompes"]').click();await sleep(100);
+document.querySelector('[data-perso="squat"]').click();await sleep(100);
+location.hash="#/aujourdhui";await sleep(250);
+var cta=document.querySelector('[data-guide="seance-perso"]');
+ok("C5 bouton Lancer ma seance composee sur l'accueil",!!cta);
+cta.click();await sleep(300);
+ok("C5 guidage ouvert avec 2 exercices",O()&&O().querySelectorAll(".gs-plan li").length===4);
+ok("C5 titre Ma seance composee",/Ma séance composée/.test(T()));
+''')
+# C6 catalogue : comptes et coherence
+build('C6',G0,None,'''
+ok("C6 50 exercices",EXERCICES.length===50);
+ok("C6 16 materiels",MATERIEL.length===16);
+var ids={},dbl=false;EXERCICES.forEach(function(e){if(ids[e.id])dbl=true;ids[e.id]=1;});
+ok("C6 ids uniques",!dbl);
+var mat={};MATERIEL.forEach(function(m){mat[m.id]=1;});mat.corps=1;
+ok("C6 requis connus",EXERCICES.every(function(e){return e.requis.every(function(r){return mat[r];});}));
+ok("C6 groupes connus",EXERCICES.every(function(e){return GROUPES.indexOf(e.groupe)!==-1;}));
+ok("C6 lieu exterieur seulement sur course",EXERCICES.filter(function(e){return e.lieux;}).length===1&&EXERCICES.filter(function(e){return e.lieux;})[0].id==="course-a-pied");
+''')
+# C7 planches musculaires pour toutes les fiches
+build('C7',G0,None,'''
+ok("C7 planche musculaire pour chaque exercice",EXERCICES.every(function(e){return !!S4L.plate(ex(e.id));}));
+''')
+# C8 retrait Garmin
+build('C8',G0,None,'''
+ok("C8 aucune mention Garmin dans les vues",!/garmin/i.test(document.getElementById("vue").innerHTML));
+location.hash="#/profil";await sleep(200);
+ok("C8 pas de carte Ma montre",!/Ma montre/i.test(document.getElementById("vue").innerHTML)&&!document.querySelector('[data-montre-open]'));
+location.hash="#/montre";await sleep(200);
+ok("C8 route montre retiree (accueil affiche)",!/Ma montre/i.test(document.getElementById("vue").innerHTML));
+''')
+# ===== runs.sh
+# R=$1; shift; for n in "$@"; do echo "== $n"; google-chrome --headless=new --no-sandbox --disable-gpu --window-size=360,640 --virtual-time-budget=150000 --dump-dom file://$R/site/_c_$n.html 2>/dev/null | grep -o 'data-log="[^"]*"' | sed 's/ || /\n  /g;s/"$//'; done
