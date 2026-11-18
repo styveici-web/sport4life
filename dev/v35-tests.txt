@@ -3,6 +3,8 @@
 import sys,re,json
 R='/tmp/t'
 idx=open('/tmp/sport4life/sport4life-app/index.html').read()
+import re as _re
+idx=_re.sub(r'<meta http-equiv="Content-Security-Policy"[^>]*>\n?','',idx)
 PRE=r'''<script>
 window.Capacitor={Plugins:{LocalNotifications:{schedule:function(){return Promise.resolve()},requestPermissions:function(){return Promise.resolve({display:"granted"})},checkPermissions:function(){return Promise.resolve({display:"granted"})},cancel:function(){return Promise.resolve()},createChannel:function(){return Promise.resolve()}}}};
 window.LOGS=[];function L(k,v){LOGS.push(k+": "+(v===true?"OK":v===false?"ECHEC":v));}
