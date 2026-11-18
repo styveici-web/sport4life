@@ -1,0 +1,115 @@
+# Sport4Life v35 - tests objectif (Chrome headless). Usage: python3 mk.py (écrit sport4life-app/_t_*.html), sh run.sh G1 G2 G3 G4 G5 G6 G7 puis supprimer _t_*.html
+# ===== mk.py
+import sys,re,json
+R='/tmp/t'
+idx=open('/tmp/sport4life/sport4life-app/index.html').read()
+PRE=r'''<script>
+window.Capacitor={Plugins:{LocalNotifications:{schedule:function(){return Promise.resolve()},requestPermissions:function(){return Promise.resolve({display:"granted"})},checkPermissions:function(){return Promise.resolve({display:"granted"})},cancel:function(){return Promise.resolve()},createChannel:function(){return Promise.resolve()}}}};
+window.LOGS=[];function L(k,v){LOGS.push(k+": "+(v===true?"OK":v===false?"ECHEC":v));}
+function ok(k,c){L(k,!!c);}
+window.confirm=function(){return true};window.alert=function(){};
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+function fin(){document.documentElement.setAttribute("data-log",LOGS.join(" || "));}
+function PROF(i){return JSON.parse(localStorage.getItem("sport4life.v1")).profils[i||0];}
+function seed(p){localStorage.clear();localStorage.setItem("sport4life.v1",JSON.stringify({actif:p.id,profils:[p]}));}
+var MAT=["corps","halteres","disques","elastique","abwheel","corde","medball","gilet"];
+function prof(extra){var p={id:"p1",nom:"Test",taille:"180",poids:"75",age:"30",sexe:"h",activite:"1.55",materiel:MAT,lieu:"lesdeux",migre3:true,valides:{},poidsLog:[],journal:{}};Object.keys(extra||{}).forEach(function(k){p[k]=extra[k]});return p;}
+function nutritionTxt(){var d=document.getElementById("nutrition");return d?d.textContent:"";}
+</script>'''
+def page0(name,body):
+    h=idx.replace('<script src="data/exercises.js','<script>'+PRE.split('<script>')[1].split('</script>')[0]+'</script><script src="data/exercises.js',1)
+    h=h.replace('</body>','<script>window.addEventListener("load",function(){setTimeout(async function(){try{'+body+'}catch(e){L("EXC",String(e&&e.stack||e))}fin();},500)});</script></body>')
+    open('/tmp/sport4life/sport4life-app/_t_'+name+'.html','w').write(h)
+def page2(name,extra,body):
+    h=idx.replace('<script src="data/exercises.js','<script>'+PRE.split('<script>')[1].split('</script>')[0]+'</script><script>seed(prof(%s));</script><script src="data/exercises.js'%json.dumps(extra),1)
+    h=h.replace('</body>','<script>window.addEventListener("load",function(){setTimeout(async function(){try{'+body+'}catch(e){L("EXC",String(e&&e.stack||e))}fin();},500)});</script></body>')
+    open('/tmp/sport4life/sport4life-app/_t_'+name+'.html','w').write(h)
+# G1 : profil d'avant v35 (sans champ objectif) -> masse, comportement identique (+300, 1,6 g/kg)
+page2('G1',{},r'''
+location.hash="#/aujourdhui";await sleep(300);
+document.querySelector("[data-intensite='equilibre']").click();await sleep(200);
+ok("defaut-masse",PROF().objectif==="masse");
+var t=nutritionTxt();
+ok("texte-masse",t.indexOf("Objectif : Prise de masse")>-1&&t.indexOf("+ 300 kcal")>-1&&t.indexOf("1,6 g par kg")>-1);
+var m=t.match(/(\d[\d ]*) kcal/);L("cible-masse",m&&m[1]);
+var e=t.match(/entretien d'environ ([\d ]*) kcal/);L("entretien",e&&e[1]);
+ok("relation-masse",m&&e&&(parseInt(m[1].replace(/ /g,""))-parseInt(e[1].replace(/ /g,""))===300));
+ok("prot-120",t.indexOf("environ 120 g par jour")>-1);
+''')
+# G2 : seche -> -400 kcal, 2 g/kg
+page2('G2',{'objectif':'seche'},r'''
+location.hash="#/aujourdhui";await sleep(300);
+var t=nutritionTxt();
+ok("texte-seche",t.indexOf("Objectif : Perte de gras")>-1&&t.indexOf("400 kcal")>-1&&t.indexOf("2 g par kg")>-1);
+var m=t.match(/(\d[\d ]*) kcal/);var e=t.match(/entretien d'environ ([\d ]*) kcal/);
+ok("relation-seche",m&&e&&(parseInt(e[1].replace(/ /g,""))-parseInt(m[1].replace(/ /g,""))===400));
+ok("prot-150",t.indexOf("environ 150 g par jour")>-1);
+L("cible-seche",m&&m[1]);
+''')
+# G3 : objectif invalide -> masse ; maintien et force corrects
+page2('G3',{'objectif':'nimporte'},r'''
+location.hash="#/aujourdhui";await sleep(300);
+ok("invalide->masse",nutritionTxt().indexOf("Objectif : Prise de masse")>-1);
+location.hash="#/profil";await sleep(300);
+ok("invalide->masse-select",document.getElementById("objectif").value==="masse");
+''')
+page2('G3b',{'objectif':'maintien'},r'''
+location.hash="#/aujourdhui";await sleep(300);
+var t=nutritionTxt();
+ok("maintien-texte",t.indexOf("Objectif : Remise en forme")>-1&&t.indexOf("sans surplus ni déficit")>-1&&t.indexOf("1,4 g par kg")>-1);
+var m=t.match(/(\d[\d ]*) kcal/);var e=t.match(/entretien d'environ ([\d ]*) kcal/);
+ok("maintien-egal-entretien",m&&e&&(parseInt(m[1].replace(/ /g,""))===parseInt(e[1].replace(/ /g,""))));
+ok("prot-105",t.indexOf("environ 105 g par jour")>-1);
+''')
+page2('G3c',{'objectif':'force'},r'''
+location.hash="#/aujourdhui";await sleep(300);
+var t=nutritionTxt();
+ok("force-texte",t.indexOf("Objectif : Force")>-1&&t.indexOf("+ 150 kcal")>-1&&t.indexOf("1,8 g par kg")>-1);
+ok("prot-135",t.indexOf("environ 135 g par jour")>-1);
+''')
+# G4 : le select du profil persiste via le formulaire
+page2('G4',{},r'''
+location.hash="#/profil";await sleep(300);
+var sel=document.getElementById("objectif");ok("profil-select",!!sel&&sel.value==="masse");
+sel.value="seche";document.querySelector("form button[type=submit]").click();await sleep(300);
+ok("profil-enregistre-seche",PROF().objectif==="seche");
+location.hash="#/aujourdhui";await sleep(300);
+ok("accueil-seche-apres-profil",nutritionTxt().indexOf("Objectif : Perte de gras")>-1);
+ok("valides-intacts",JSON.stringify(PROF().valides)==='{}');
+ok("journal-intact",JSON.stringify(PROF().journal)==='{}');
+''')
+# G5 : écran Bienvenue (aucun profil) : texte générique + select objectif ; création avec seche
+page0('G5',r'''
+location.hash="#/aujourdhui";await sleep(300);
+ok("bienvenue-generique",document.getElementById("vue").textContent.indexOf("prise de masse, perte de gras, remise en forme ou force")>-1);
+ok("bienvenue-plus-fige",document.getElementById("vue").textContent.indexOf("Ton coach perso pour la prise de muscle")===-1);
+var sel=document.getElementById("objectif");ok("bienvenue-select",!!sel);
+document.getElementById("nom").value="Ami";sel.value="seche";
+document.querySelector("#bienvenue button[type=submit]").click();await sleep(300);
+ok("cree-seche",PROF().objectif==="seche"&&PROF().nom==="Ami");
+''')
+# G6 : profil incomplet + seche -> repas visent 2 000 kcal (valeur type de l'objectif)
+page2('G6',{'objectif':'seche','taille':'','poids':'','age':'','sexe':''},r'''
+location.hash="#/repas";await sleep(300);
+var t=document.getElementById("vue").textContent;
+ok("repas-valeur-type-seche",t.indexOf("2 000 kcal")>-1&&t.indexOf("Perte de gras")>-1);
+''')
+# G7 : export/import conserve l'objectif (nouveau profil) ; local inchangé
+page2('G7',{'objectif':'force'},r'''
+location.hash="#/profil";await sleep(300);
+var imp=JSON.parse(JSON.stringify(PROF()));imp.id="p2";imp.nom="Ami";imp.objectif="seche";
+var z=document.getElementById("zone-transfert");z.value=JSON.stringify({profils:[imp]});
+document.querySelector("[data-import]").click();await sleep(300);
+var all=JSON.parse(localStorage.getItem("sport4life.v1")).profils;
+ok("import-garde-seche",all.some(function(p){return p.nom==="Ami"&&p.objectif==="seche"}));
+ok("local-inchange",all[0].objectif==="force");
+var imp2=JSON.parse(JSON.stringify(imp));imp2.id="p3";imp2.nom="Ami2";imp2.objectif="<img src=x onerror=1>";
+z=document.getElementById("zone-transfert");z.value=JSON.stringify({profils:[imp2]});
+document.querySelector("[data-import]").click();await sleep(300);
+all=JSON.parse(localStorage.getItem("sport4life.v1")).profils;
+ok("import-invalide->masse",all.some(function(p){return p.nom==="Ami2"&&p.objectif==="masse"}));
+''')
+# pages pour captures
+page2('S1',{'objectif':'seche'},'location.hash="#/profil";await sleep(400);')
+page2('S2',{'objectif':'seche'},'location.hash="#/aujourdhui";await sleep(400);document.getElementById("nutrition").setAttribute("open","");')
+page2('S3',{},'location.hash="#/aujourdhui";await sleep(400);document.getElementById("nutrition").setAttribute("open","");')

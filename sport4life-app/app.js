@@ -34,9 +34,28 @@
     { id: "equilibre", nom: "Équilibré", exos: 4, delta: 0, desc: "4 exercices plus 1 de cardio, séries du catalogue. C'est la séance habituelle." },
     { id: "soutenu", nom: "Soutenu", exos: 5, delta: 1, desc: "5 exercices plus 1 de cardio, une série de plus par exercice (5 au maximum). Pour les jours où tu as du temps et de l'énergie." }
   ];
+  // ---------- Objectif (v35) ----------
+  // Quatre objectifs, choisis d'après les buts les plus courants en musculation/fitness (enquêtes d'adhérents de salles :
+  // perte de poids, prise de muscle, remise en forme générale, force).
+  // Calories : surplus/déficit par rapport à l'entretien (Mifflin-St Jeor). Déficit gardé modéré (<= 500 kcal) pour
+  // limiter la perte de muscle (revues ISSN régimes et composition corporelle, Phillips & Van Loon 2011).
+  // Protéines (g/kg/jour) : ISSN 2017 donne 1,4 à 2,0 g/kg pour construire ou garder le muscle ;
+  // en déficit, les revues recommandent plutôt 1,8 à 2,7 g/kg (Phillips & Van Loon 2011, PMID 21487142 ;
+  // Phillips 2014, PMID 25014731) : on retient 2,0. Force/puissance : 1,6 à 1,8 g/kg (Hoffman, cité par l'ISSN).
+  // « masse » reproduit exactement le comportement d'avant (+ 300 kcal, 1,6 g/kg).
+  var OBJECTIFS = [
+    { id: "masse", nom: "Prise de masse", deltaK: 300, prot: 1.6, kcalType: 2800, desc: "Prendre du muscle. Léger surplus : entretien + 300 kcal, 1,6 g de protéines par kg." },
+    { id: "seche", nom: "Perte de gras", deltaK: -400, prot: 2, kcalType: 2000, desc: "Perdre du gras en gardant le muscle. Déficit modéré : entretien - 400 kcal, protéines élevées (2 g par kg)." },
+    { id: "maintien", nom: "Remise en forme", deltaK: 0, prot: 1.4, kcalType: 2500, desc: "Bouger et rester en forme, sans changer de poids. Calories d'entretien, 1,4 g de protéines par kg." },
+    { id: "force", nom: "Force", deltaK: 150, prot: 1.8, kcalType: 2650, desc: "Devenir plus fort. Petit surplus : entretien + 150 kcal, 1,8 g de protéines par kg." }
+  ];
+  function objectifDe(p) {
+    for (var i = 0; i < OBJECTIFS.length; i++) if (p && OBJECTIFS[i].id === p.objectif) return OBJECTIFS[i];
+    return OBJECTIFS[0];
+  }
   function exemple() {
     return {
-      id: uid(), nom: "Exemple : capoeiriste", taille: "", poids: "", age: "", sexe: "", activite: "1.55",
+      id: uid(), nom: "Exemple : capoeiriste", taille: "", poids: "", age: "", sexe: "", activite: "1.55", objectif: "masse",
       note: "Capoeira 2 fois par semaine depuis 10 ans, entraînement surtout au poids du corps.",
       materiel: ["corps", "halteres", "disques", "elastique", "abwheel", "corde", "medball", "gilet"], migre3: true, lieu: "lesdeux",
       valides: {}, poidsLog: [], journal: {}
@@ -60,6 +79,8 @@
     if (!p.lieu) p.lieu = "lesdeux";
     // v34 : intensité de l'entraînement. Valeur par défaut = « équilibrée » = comportement d'avant (rien ne change tant qu'on ne la modifie pas).
     if (INTENSITES.map(function (x) { return x.id; }).indexOf(p.intensite) === -1) p.intensite = "equilibre";
+    // v35 : objectif. Valeur par défaut = « masse » = comportement d'avant (+ 300 kcal, 1,6 g/kg, mêmes textes qu'avant).
+    if (OBJECTIFS.map(function (x) { return x.id; }).indexOf(p.objectif) === -1) p.objectif = "masse";
     // v32 : "autre" éclate en chaise/banc et barre de traction. Ajout seulement, rien n'est retiré.
     if (p.materiel.indexOf("autre") !== -1) {
       ["banc", "barre"].forEach(function (m) { if (p.materiel.indexOf(m) === -1) p.materiel.push(m); });
@@ -333,13 +354,20 @@
   function besoins(p) {
     var t = parseFloat(String(p.taille).replace(",", ".")), w = parseFloat(String(p.poids).replace(",", ".")), a = parseFloat(p.age);
     if (!(t > 0 && w > 0 && a > 0) || (p.sexe !== "h" && p.sexe !== "f")) return null;
+    var o = objectifDe(p);
     var bmr = 10 * w + 6.25 * t - 5 * a + (p.sexe === "h" ? 5 : -161);
     var entretien = bmr * parseFloat(p.activite || "1.55");
-    return { entretien: Math.round(entretien), cible: Math.round(entretien + 300), proteines: Math.round(1.6 * w) };
+    return { entretien: Math.round(entretien), cible: Math.round(entretien + o.deltaK), proteines: Math.round(o.prot * w), objectif: o };
   }
+  // Texte du réglage calorique, ex. "+ 300 kcal" ou "- 400 kcal" ("calories d'entretien" si 0).
+  function texteDelta(o) {
+    if (!o.deltaK) return "calories d'entretien, sans surplus ni déficit";
+    return (o.deltaK > 0 ? "+ " : "\u2212 ") + Math.abs(o.deltaK) + " kcal";
+  }
+  function kcalTxt(n) { return String(n).replace(/(\d)(\d{3})$/, "$1 $2"); }
 
 
-  var V = "34";
+  var V = "35";
   function vignette(e) {
     // v31 : miniature claire et lisible (dessin du mouvement, sinon planche musculaire face ou dos), fournie par guide.js.
     if (window.S4L && S4L.vig) return S4L.vig(e);
@@ -476,6 +504,9 @@
     if (!alerteDonnees) return "";
     return '<div class="alerte"><strong>Données illisibles.</strong> Tes données enregistrées dans ce navigateur n\'ont pas pu être lues. Je n\'ai rien effacé : une copie brute est gardée. <button class="second" data-sauvegarde="1">Télécharger la copie</button></div>';
   }
+  function champObjectif(p) {
+    return '<label for="objectif" class="titre-champ" style="margin-top:16px;font-size:1.05rem;font-weight:700">Objectif</label><select id="objectif" aria-describedby="objectif-desc">' + OBJECTIFS.map(function (x) { return '<option value="' + x.id + '"' + (objectifDe(p).id === x.id ? " selected" : "") + ">" + x.nom + "</option>"; }).join("") + '</select><p class="doux petit" id="objectif-desc">' + OBJECTIFS.map(function (x) { return "<strong>" + x.nom + "</strong> : " + esc(x.desc); }).join("<br>") + "<br>L'objectif règle les calories et les protéines des repas proposés. Tu peux le changer à tout moment.</p>";
+  }
   function champIntensite(p) {
     return '<label for="intensite" class="titre-champ" style="margin-top:16px;font-size:1.05rem;font-weight:700">Intensité de l\'entraînement</label><select id="intensite" aria-describedby="intensite-desc">' + INTENSITES.map(function (x) { return '<option value="' + x.id + '"' + (intensiteDe(p).id === x.id ? " selected" : "") + ">" + x.nom + "</option>"; }).join("") + '</select><p class="doux petit" id="intensite-desc">' + INTENSITES.map(function (x) { return "<strong>" + x.nom + "</strong> : " + esc(x.desc); }).join("<br>") + "<br>L'échauffement et les étirements restent toujours proposés. Tu peux changer ce réglage à tout moment. Les lignes de séries déjà saisies pour un exercice ne changent pas.</p>";
   }
@@ -488,6 +519,7 @@
     h += '<label for="activite">Niveau d\'activité</label><select id="activite">' + ACTIVITES.map(function (x) {
       return '<option value="' + x[0] + '"' + (p.activite === x[0] ? " selected" : "") + ">" + x[1] + "</option>";
     }).join("") + "</select>";
+    h += champObjectif(p);
     h += champIntensite(p);
     h += '<h3 style="margin-top:16px">Où t\'entraînes-tu ?</h3><select id="lieu">' +
       [["lesdeux", "Aux deux endroits"], ["maison", "À la maison"], ["exterieur", "En extérieur"]].map(function (x) {
@@ -503,7 +535,7 @@
   function vueBienvenue() {
     var vide = { nom: "", taille: "", poids: "", age: "", sexe: "", activite: "1.55", materiel: ["corps"] };
     var h = alerteHtml() + "<h2>Bienvenue sur Sport4Life</h2>";
-    h += '<div class="carte verre"><p>Ton coach perso pour la prise de muscle : séances adaptées à ton matériel, repas suggérés et suivi. Crée ton profil pour commencer. Tout reste enregistré dans ce navigateur, sur cet appareil.</p></div>';
+    h += '<div class="carte verre"><p>Ton coach perso : séances adaptées à ton matériel, repas calés sur ton objectif (prise de masse, perte de gras, remise en forme ou force) et suivi de ta progression. Crée ton profil pour commencer. Tout reste enregistré dans ce navigateur, sur cet appareil.</p></div>';
     h += '<form class="carte verre" id="bienvenue" autocomplete="off"><h3>Ton profil</h3>' + champsProfil(vide);
     h += '<p class="doux" style="margin-top:10px">Taille, poids, âge et sexe servent à estimer tes besoins en calories et protéines. Tu peux les ajouter plus tard.</p>';
     h += '<button type="submit">Créer mon profil</button></form>';
@@ -542,7 +574,7 @@
   }
   // N'utilise QUE des repas compatibles : un repas exclu n'est jamais réintroduit, même si la cible n'est pas atteinte.
   function genererRepas(p) {
-    var n = besoins(p), cible = n ? n.cible : 2800, prot = n ? n.proteines : 0;
+    var n = besoins(p), cible = n ? n.cible : objectifDe(p).kcalType, prot = n ? n.proteines : 0;
     var c = parMoment(repasCompatibles(p));
     if (!c.pd.length && !c.pl.length && !c.co.length) return [];
     var bons = [], meilleur = null, ecartMin = 1e9;
@@ -571,7 +603,7 @@
   }
   // Message honnête si les repas compatibles ne suffisent pas ou si la cible n'est pas atteinte (rien d'exclu n'est ajouté).
   function messageRepas(p, repas) {
-    var l = repasCompatibles(p), c = parMoment(l), n = besoins(p), cible = n ? n.cible : 2800, prot = n ? n.proteines : 0, kcal = 0, pr = 0;
+    var l = repasCompatibles(p), c = parMoment(l), n = besoins(p), cible = n ? n.cible : objectifDe(p).kcalType, prot = n ? n.proteines : 0, kcal = 0, pr = 0;
     repas.forEach(function (r) { kcal += r.kcal; pr += r.prot; });
     var manque = c.pd.length < 1 || c.pl.length < 2 || c.co.length < 1, loinK = kcal < cible * 0.9, loinP = prot > 0 && pr < prot * 0.9;
     if (!manque && !loinK && !loinP) return "";
@@ -641,7 +673,7 @@
       h += "<p><strong>Total : ≈ " + kcal + " kcal, " + prot + " g de protéines</strong>";
       var n = besoins(p);
       if (n) h += '<br><span class="doux">Objectif estimé : ' + n.cible + " kcal et " + n.proteines + " g de protéines.</span>";
-      else h += '<br><span class="doux">Profil incomplet : repas choisis pour environ 2 800 kcal (valeur type). Renseigne ta taille, ton poids, ton âge et ton sexe dans le profil pour viser ton objectif.</span>';
+      else h += '<br><span class="doux">Profil incomplet : repas choisis pour environ ' + kcalTxt(objectifDe(p).kcalType) + ' kcal (valeur type, objectif « ' + esc(objectifDe(p).nom) + ' »). Renseigne ta taille, ton poids, ton âge et ton sexe dans le profil pour viser ton objectif.</span>';
       h += "</p>";
       h += messageRepas(p, repas) + rappelFiltre(p);
       h += '<div class="alerte">' + esc(LIMITES_ALIM) + " Ajuste les quantités à ton appétit et à ton objectif.</div>";
@@ -857,7 +889,7 @@
     h += '<details class="carte verre" id="nutrition"><summary><strong>Nutrition</strong> <span class="doux">' + (n ? "≈ " + n.cible + " kcal · " + n.proteines + " g de protéines par jour" : "besoins à estimer (profil incomplet)") + "</span></summary>";
     if (n) {
       h += '<p style="margin-top:10px"><span class="kcal">' + n.cible + ' kcal</span> par jour<br>Protéines : environ ' + n.proteines + " g par jour</p>" +
-        '<p class="doux">Estimation : dépense d\'entretien d\'environ ' + n.entretien + " kcal (formule de Mifflin-St Jeor) + 300 kcal. Protéines : 1,6 g par kg de poids.</p>";
+        '<p class="doux">Objectif : ' + esc(objectifDe(p).nom) + ". Estimation : dépense d'entretien d'environ " + n.entretien + " kcal (formule de Mifflin-St Jeor), " + texteDelta(n.objectif) + ". Protéines : " + String(n.objectif.prot).replace(".", ",") + " g par kg de poids.</p>";
     } else {
       h += "<p style=\"margin-top:10px\">Renseigne ta taille, ton poids, ton âge et ton sexe dans le <a href=\"#/profil\">profil</a> pour estimer tes besoins.</p>";
     }
@@ -892,7 +924,7 @@
     h += "<p><strong>Total : ≈ " + kcal + " kcal, " + prot + " g de protéines</strong>";
     var n = besoins(p);
     if (n) h += '<br><span class="doux">Objectif estimé : ' + n.cible + " kcal et " + n.proteines + " g de protéines.</span>";
-    else h += '<br><span class="doux">Profil incomplet : repas choisis pour environ 2 800 kcal (valeur type). Renseigne ta taille, ton poids, ton âge et ton sexe dans le <a href="#/profil">profil</a> pour viser ton objectif.</span>';
+    else h += '<br><span class="doux">Profil incomplet : repas choisis pour environ ' + kcalTxt(objectifDe(p).kcalType) + ' kcal (valeur type, objectif « ' + esc(objectifDe(p).nom) + ' »). Renseigne ta taille, ton poids, ton âge et ton sexe dans le <a href="#/profil">profil</a> pour viser ton objectif.</span>';
     h += "</p>" + messageRepas(p, repas) + rappelFiltre(p) + '<button data-repas-regen="1">Autres repas</button></div>';
     var compat = repasCompatibles(p), masques = REPAS.length - compat.length;
     h += '<div class="carte verre"><h3>Tous les repas</h3><p class="doux">Pour varier ou remplacer un repas.' + (masques ? " " + pluriel(masques, "repas est masqué", "repas sont masqués") + " par tes exclusions." : "") + "</p>";
@@ -1028,6 +1060,7 @@
     h += '<label for="activite">Niveau d\'activité</label><select id="activite">' + ACTIVITES.map(function (a) {
       return '<option value="' + a[0] + '"' + (p.activite === a[0] ? " selected" : "") + ">" + a[1] + "</option>";
     }).join("") + "</select>";
+    h += champObjectif(p);
     h += champIntensite(p);
     h += '<h3 style="margin-top:16px">Où t\'entraînes-tu ?</h3><select id="lieu">' +
       [["lesdeux", "Aux deux endroits"], ["maison", "À la maison"], ["exterieur", "En extérieur"]].map(function (x) {
@@ -1118,7 +1151,7 @@
     p = p || profil();
     var g = function (i) { return document.getElementById(i).value; };
     p.nom = g("nom").trim() || "Sans nom";
-    p.taille = g("taille").trim().replace(",", "."); p.poids = g("poids").trim().replace(",", "."); p.age = g("age"); p.sexe = g("sexe"); p.activite = g("activite"); p.lieu = g("lieu"); if (document.getElementById("intensite")) p.intensite = g("intensite");
+    p.taille = g("taille").trim().replace(",", "."); p.poids = g("poids").trim().replace(",", "."); p.age = g("age"); p.sexe = g("sexe"); p.activite = g("activite"); p.lieu = g("lieu"); if (document.getElementById("intensite")) p.intensite = g("intensite"); if (document.getElementById("objectif")) p.objectif = g("objectif");
     p.materiel = [].slice.call(document.querySelectorAll("[data-mat]")).filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute("data-mat"); });
     sauver();
     return p;
