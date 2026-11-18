@@ -1,0 +1,29 @@
+name: Tests (auditeur)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tests.yml'
+      - 'sport4life-app/**'
+      - 'dev/auditeur/**'
+  pull_request:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Installer jsdom
+        run: npm install --prefix /tmp/audit jsdom --no-audit --no-fund
+
+      - name: Batteries XSS, localStorage et valeurs extrêmes (bloquant)
+        env:
+          NODE_PATH: /tmp/audit/node_modules
+        run: node dev/auditeur/run.js

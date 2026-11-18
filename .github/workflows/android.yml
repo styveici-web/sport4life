@@ -66,6 +66,8 @@ jobs:
           XML
           M=android/app/src/main/AndroidManifest.xml
           grep -q POST_NOTIFICATIONS "$M" || sed -i 's#<application#<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application#' "$M"
+          # v35.2 : pas de sauvegarde automatique des donnees de l'appli
+          sed -i 's#<application #<application android:allowBackup="false" #' "$M"
           cat "$M"
 
       - name: Numéro de version Android
@@ -74,43 +76,43 @@ jobs:
           sed -i "s/versionCode [0-9]*/versionCode $((100 + GITHUB_RUN_NUMBER))/" "$F"
           grep -n versionCode "$F"
 
-      - name: Construire l'APK debug
+      - name: Construire l'APK release
         working-directory: android-app/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon
 
       - name: Permissions de l'APK
         env:
           KS_B64: ${{ secrets.S4_KEYSTORE_B64 }}
           KS_PASS: ${{ secrets.S4_KEYSTORE_PASS }}
         run: |
-          APK=android-app/android/app/build/outputs/apk/debug/app-debug.apk
-          cp "$APK" Sport4Life-debug.apk
+          APK=android-app/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          cp "$APK" Sport4Life-release.apk
           test -n "$KS_B64" && test -n "$KS_PASS"
           echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/s4.p12"
           BT=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)
-          "$BT/apksigner" sign --ks "$RUNNER_TEMP/s4.p12" --ks-pass env:KS_PASS --key-pass env:KS_PASS --ks-key-alias sport4life Sport4Life-debug.apk
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/s4.p12" --ks-pass env:KS_PASS --key-pass env:KS_PASS --ks-key-alias sport4life Sport4Life-release.apk
           rm -f "$RUNNER_TEMP/s4.p12"
-          "$BT/apksigner" verify --print-certs Sport4Life-debug.apk | head -3
+          "$BT/apksigner" verify --print-certs Sport4Life-release.apk | head -3
           AAPT=$(ls $ANDROID_HOME/build-tools/*/aapt | tail -1)
-          "$AAPT" dump permissions Sport4Life-debug.apk | tee permissions.txt
-          ls -la Sport4Life-debug.apk
+          "$AAPT" dump permissions Sport4Life-release.apk | tee permissions.txt
+          ls -la Sport4Life-release.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Sport4Life-debug-apk
-          path: Sport4Life-debug.apk
+          name: Sport4Life-release-apk
+          path: Sport4Life-release.apk
 
       - name: Publier la release android-latest
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          sha256sum Sport4Life-debug.apk
+          sha256sum Sport4Life-release.apk
           VC=$((100 + GITHUB_RUN_NUMBER))
           TAG="android-candidate-v35-vc${VC}"
-          gh release create "$TAG" Sport4Life-debug.apk \
+          gh release create "$TAG" Sport4Life-release.apk \
             --target "$GITHUB_SHA" \
-            --title "Sport4Life Android CANDIDAT v35 vc${VC} (debug, branche ${GITHUB_REF_NAME})" \
-            --notes "CANDIDAT de test v35, pas la version stable. APK signé avec la clé Sport4Life, s'installe par-dessus l'appli existante sans désinstaller. Les releases android-latest et android-candidate ne sont pas modifiées. Build du ${GITHUB_SHA::7}." \
+            --title "Sport4Life Android CANDIDAT v35 vc${VC} (release, branche ${GITHUB_REF_NAME})" \
+            --notes "CANDIDAT de test v35, pas la version stable. Build release, APK signé avec la clé Sport4Life, s'installe par-dessus l'appli existante sans désinstaller. Les releases android-latest et android-candidate ne sont pas modifiées. Build du ${GITHUB_SHA::7}." \
             --prerelease --latest=false
