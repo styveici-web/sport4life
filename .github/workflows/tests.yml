@@ -13,15 +13,19 @@ on:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Installer jsdom
-        run: npm install --prefix /tmp/audit jsdom --no-audit --no-fund
+        run: npm install --prefix /tmp/audit jsdom@31.0.1 --no-audit --no-fund --ignore-scripts
 
       - name: Batteries XSS, localStorage et valeurs extrêmes (bloquant)
         env:

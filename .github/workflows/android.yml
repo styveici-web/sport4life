@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -35,9 +37,9 @@ jobs:
           cp -r ../sport4life-app/. www/
           rm -f www/README.md www/CREDITS.md
 
-      - name: Installer les dépendances
+      - name: Installer les dépendances (lockfile, sans scripts postinstall)
         working-directory: android-app
-        run: npm install
+        run: npm ci --ignore-scripts
 
       - name: Créer le projet Android
         working-directory: android-app
@@ -66,8 +68,21 @@ jobs:
           XML
           M=android/app/src/main/AndroidManifest.xml
           grep -q POST_NOTIFICATIONS "$M" || sed -i 's#<application#<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application#' "$M"
-          # v35.2 : pas de sauvegarde automatique des donnees de l'appli
-          sed -i 's#<application #<application android:allowBackup="false" #' "$M"
+          # v35.2 : pas de sauvegarde automatique des donnees de l'appli (ni cloud ni transfert d'appareil)
+          sed -i 's#android:allowBackup="true"#android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules"#' "$M"
+          mkdir -p android/app/src/main/res/xml
+          cat > android/app/src/main/res/xml/data_extraction_rules.xml <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <data-extraction-rules>
+            <cloud-backup>
+              <exclude domain="root" path="." />
+            </cloud-backup>
+            <device-transfer>
+              <exclude domain="root" path="." />
+            </device-transfer>
+          </data-extraction-rules>
+          XML
+          grep -q 'android:allowBackup="false"' "$M"
           cat "$M"
 
       - name: Numéro de version Android
