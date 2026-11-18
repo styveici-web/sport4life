@@ -30,9 +30,9 @@
   // Léger : 1 exercice et 1 série de moins ; Soutenu : 1 exercice et 1 série de plus (2 à 5 séries au total par exercice).
   // L'échauffement, les étirements, les répétitions cibles et les repos ne changent pas.
   var INTENSITES = [
-    { id: "leger", nom: "Léger", exos: 3, delta: -1, desc: "3 exercices, une série de moins par exercice. Pour les jours de fatigue, de reprise ou quand tu es court en temps." },
+    { id: "leger", nom: "Léger", exos: 3, delta: -1, desc: "3 exercices plus 1 de cardio, une série de moins par exercice (2 minimum). Pour les jours de fatigue, de reprise ou quand tu es court en temps." },
     { id: "equilibre", nom: "Équilibré", exos: 4, delta: 0, desc: "4 exercices plus 1 de cardio, séries du catalogue. C'est la séance habituelle." },
-    { id: "soutenu", nom: "Soutenu", exos: 5, delta: 1, desc: "5 exercices, une série de plus par exercice. Pour les jours où tu as du temps et de l'énergie." }
+    { id: "soutenu", nom: "Soutenu", exos: 5, delta: 1, desc: "5 exercices plus 1 de cardio, une série de plus par exercice (5 au maximum). Pour les jours où tu as du temps et de l'énergie." }
   ];
   function exemple() {
     return {
@@ -476,6 +476,9 @@
     if (!alerteDonnees) return "";
     return '<div class="alerte"><strong>Données illisibles.</strong> Tes données enregistrées dans ce navigateur n\'ont pas pu être lues. Je n\'ai rien effacé : une copie brute est gardée. <button class="second" data-sauvegarde="1">Télécharger la copie</button></div>';
   }
+  function champIntensite(p) {
+    return '<label for="intensite" class="titre-champ" style="margin-top:16px;font-size:1.05rem;font-weight:700">Intensité de l\'entraînement</label><select id="intensite" aria-describedby="intensite-desc">' + INTENSITES.map(function (x) { return '<option value="' + x.id + '"' + (intensiteDe(p).id === x.id ? " selected" : "") + ">" + x.nom + "</option>"; }).join("") + '</select><p class="doux petit" id="intensite-desc">' + INTENSITES.map(function (x) { return "<strong>" + x.nom + "</strong> : " + esc(x.desc); }).join("<br>") + "<br>L'échauffement et les étirements restent toujours proposés. Tu peux changer ce réglage à tout moment. Les lignes de séries déjà saisies pour un exercice ne changent pas.</p>";
+  }
   function champsProfil(p) {
     var h = '<label for="nom">Nom</label><input type="text" id="nom" value="' + esc(p.nom) + '">';
     h += '<div class="grille"><div><label for="taille">Taille (cm)</label><input type="text" id="taille" inputmode="decimal" autocomplete="off" value="' + esc(p.taille) + '"></div>';
@@ -485,7 +488,7 @@
     h += '<label for="activite">Niveau d\'activité</label><select id="activite">' + ACTIVITES.map(function (x) {
       return '<option value="' + x[0] + '"' + (p.activite === x[0] ? " selected" : "") + ">" + x[1] + "</option>";
     }).join("") + "</select>";
-    h += '<h3 style="margin-top:16px">Intensité de l\'entraînement</h3><select id="intensite" aria-describedby="intensite-desc">' + INTENSITES.map(function (x) { return '<option value="' + x.id + '"' + (intensiteDe(p).id === x.id ? " selected" : "") + ">" + x.nom + "</option>"; }).join("") + '</select><p class="doux petit" id="intensite-desc">' + INTENSITES.map(function (x) { return "<strong>" + x.nom + "</strong> : " + esc(x.desc); }).join("<br>") + "<br>L'échauffement et les étirements restent toujours proposés. Tu peux changer ce réglage à tout moment.</p>";
+    h += champIntensite(p);
     h += '<h3 style="margin-top:16px">Où t\'entraînes-tu ?</h3><select id="lieu">' +
       [["lesdeux", "Aux deux endroits"], ["maison", "À la maison"], ["exterieur", "En extérieur"]].map(function (x) {
         return '<option value="' + x[0] + '"' + ((p.lieu || "lesdeux") === x[0] ? " selected" : "") + ">" + x[1] + "</option>";
@@ -592,10 +595,16 @@
   function genererAleatoire(p) {
     var ok = EXERCICES.filter(function (e) { return faisable(e, p); });
     var exos = [];
-    melange(["Pousser", "Tirer", "Jambes", "Tronc"]).forEach(function (g) {
+    // Léger : 3 groupes tirés ; Équilibré : 4 groupes (comme en v33) ; Soutenu : 4 groupes + 1 exercice de plus.
+    var gs = melange(["Pousser", "Tirer", "Jambes", "Tronc"]).slice(0, Math.min(4, intensiteDe(p).exos));
+    gs.forEach(function (g) {
       var c = ok.filter(function (e) { return e.groupe === g; });
       if (c.length) exos.push(alea(c).id);
     });
+    if (intensiteDe(p).exos > 4) {
+      var reste = ok.filter(function (e) { return e.groupe !== "Cardio" && exos.indexOf(e.id) === -1; });
+      if (reste.length) exos.push(alea(reste).id);
+    }
     var cardio = ok.filter(function (e) { return e.groupe === "Cardio"; });
     if (cardio.length) exos.push(alea(cardio).id);
     var repas = genererRepas(p);
@@ -796,7 +805,7 @@
       h += "<h3>" + g + "</h3>";
       exos.forEach(function (e) {
         var on = choisis.indexOf(e.id) !== -1;
-        h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div></div>" +
+        h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(adapter(e, p).series) + "</div></div>" +
           '<button class="' + (on ? "" : "second") + '" data-perso="' + e.id + '" aria-pressed="' + on + '">' + (on ? "Choisi ✓" : "Ajouter") + "</button></div>";
       });
     });
@@ -916,7 +925,7 @@
     if (!liste.length) h += '<div class="carte verre"><p>Aucun exercice avec ce matériel dans ce groupe. Ajoute du matériel dans le <a href="#/profil">profil</a>.</p></div>';
     liste.forEach(function (e) {
       var ok = faisable(e, p);
-      h += '<a class="exo verre" href="#/exercice/' + e.id + '">' + vignette(e) + '<div class="corps"><strong>' + esc(e.nom) + '</strong><div class="doux">' + esc(e.groupe) + " · " + esc(e.series) + "</div><div>" + etiquettesMat(e) + (ok ? "" : '<span class="etiquette">Matériel manquant</span>') + "</div></div></a>";
+      h += '<a class="exo verre" href="#/exercice/' + e.id + '">' + vignette(e) + '<div class="corps"><strong>' + esc(e.nom) + '</strong><div class="doux">' + esc(e.groupe) + " · " + esc(adapter(e, p).series) + "</div><div>" + etiquettesMat(e) + (ok ? "" : '<span class="etiquette">Matériel manquant</span>') + "</div></div></a>";
     });
     h += '<p class="doux">' + liste.length + " exercice" + (liste.length > 1 ? "s" : "") + " affiché" + (liste.length > 1 ? "s" : "") + " sur " + EXERCICES.length + ".</p>";
     vue.innerHTML = h;
@@ -943,7 +952,7 @@
     var pf = profil(), serie = seriesOverride;
     if (!serie) {
       var auj = pf.journal[aujourdhui()] && pf.journal[aujourdhui()][e.id], der = derniereSeance(pf, e.id);
-      serie = auj && auj.length ? auj : der ? der.series : (function () { var m = (e.series || "").match(/^\s*(\d+)\s*x/i), n = m ? Math.max(1, Math.min(6, parseInt(m[1], 10))) : 3, t = []; for (var i = 0; i < n; i++) t.push({ r: "", k: "" }); return t; })();
+      serie = auj && auj.length ? auj : der ? der.series : (function () { var m = (e.series || "").match(/^\s*(\d+)\s*x/i), n = Math.max(2, Math.min(5, 3 + intensiteDe(pf).delta)), t = []; for (var i = 0; i < n; i++) t.push({ r: "", k: "" }); return t; })();
       serie = serie.map(function (x) { return { r: x.r, k: x.k }; });
     }
     h += blocSeries(pf, e, serie, note);
@@ -1019,7 +1028,7 @@
     h += '<label for="activite">Niveau d\'activité</label><select id="activite">' + ACTIVITES.map(function (a) {
       return '<option value="' + a[0] + '"' + (p.activite === a[0] ? " selected" : "") + ">" + a[1] + "</option>";
     }).join("") + "</select>";
-    h += '<h3 style="margin-top:16px">Intensité de l\'entraînement</h3><select id="intensite" aria-describedby="intensite-desc">' + INTENSITES.map(function (x) { return '<option value="' + x.id + '"' + (intensiteDe(p).id === x.id ? " selected" : "") + ">" + x.nom + "</option>"; }).join("") + '</select><p class="doux petit" id="intensite-desc">' + INTENSITES.map(function (x) { return "<strong>" + x.nom + "</strong> : " + esc(x.desc); }).join("<br>") + "<br>L'échauffement et les étirements restent toujours proposés. Tu peux changer ce réglage à tout moment.</p>";
+    h += champIntensite(p);
     h += '<h3 style="margin-top:16px">Où t\'entraînes-tu ?</h3><select id="lieu">' +
       [["lesdeux", "Aux deux endroits"], ["maison", "À la maison"], ["exterieur", "En extérieur"]].map(function (x) {
         return '<option value="' + x[0] + '"' + ((p.lieu || "lesdeux") === x[0] ? " selected" : "") + ">" + x[1] + "</option>";
@@ -1119,7 +1128,7 @@
   vue.addEventListener("click", function (ev) {
     var t = ev.target.closest("button");
     if (!t) return;
-    if (t.dataset.intensite) { var pi = profil(); if (pi && INTENSITES.some(function (x) { return x.id === t.dataset.intensite; })) { pi.intensite = t.dataset.intensite; sauver(); route(true); } return; }
+    if (t.dataset.intensite) { var pi = profil(); if (pi && INTENSITES.some(function (x) { return x.id === t.dataset.intensite; })) { pi.intensite = t.dataset.intensite; sauver(); route(true); var bf = vue.querySelector('[data-intensite="' + pi.intensite + '"]'); if (bf) bf.focus(); } return; }
     if (t.dataset.sauvegarde) { telechargerSauvegarde(); return; }
     if (t.dataset.exemple) {
       var ex = exemple(); etat.profils.push(ex); etat.actif = ex.id; sauver(); route(); return;

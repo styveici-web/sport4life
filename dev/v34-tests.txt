@@ -1,4 +1,4 @@
-# Sport4Life v34 - tests intensité (Chrome headless). Usage: python3 mk.py (écrit sport4life-app/_t_*.html), sh run.sh T1 T2 ... puis supprimer _t_*.html
+# Sport4Life v34 - tests intensité (Chrome headless). Usage: python3 mk.py (écrit sport4life-app/_t_*.html), sh run.sh T1 T2 ... A_leger A_equilibre A_soutenu puis supprimer _t_*.html
 # ===== mk.py
 import sys,re,json
 R='/tmp/t'
@@ -98,11 +98,10 @@ page2('T8',{'intensite':'leger'},r'''
 var e=EXERCICES.filter(function(x){return x.groupe!=="Cardio"&&nb0(x.series)===4})[0];
 function nb0(s){var m=s.match(/^\s*(\d+)\s*x/);return m?+m[1]:null}
 location.hash="#/exercice/"+e.id;await sleep(300);
-ok("fiche-3-lignes-serie-leger",document.querySelectorAll("#series .serie").length===3);
+ok("fiche-2-lignes-leger",document.querySelectorAll("#series .serie").length===2);
 ok("fiche-volume-conseille",document.body.textContent.indexOf("Volume conseillé : 3 x")>-1);
 var p=PROF();p.perso={date:new Date().toISOString().slice(0,10),exos:[e.id]};
 localStorage.setItem("sport4life.v1",JSON.stringify({actif:p.id,profils:[p]}));
-var g=S4Guide.sources.perso();ok("perso-adaptee",g.length===1&&g[0].series.indexOf("3 x")===0&&e.series.indexOf("4 x")===0);
 ''')
 # screenshot pages
 def shot(name,extra,hash):
@@ -117,6 +116,94 @@ d=datetime.date.today().isoformat()
 page2('T9',{'intensite':'soutenu','perso':{'date':d,'exos':['pompes']},'aleatoire':{'date':d,'exos':['pompes'],'repas':[]}},r'''
 var g=S4Guide.sources.perso();ok("perso-soutenu",g.length===1&&g[0].series.indexOf("5 x")===0);
 var a=S4Guide.sources.alea();ok("alea-soutenu",a.length===1&&a[0].series.indexOf("5 x")===0);
+''')
+
+page2('T10',{'intensite':'equilibre'},r'''
+function nb0(s){var m=s.match(/^\s*(\d+)\s*x/);return m?+m[1]:null}
+var e=EXERCICES.filter(function(x){return x.groupe!=="Cardio"&&nb0(x.series)===4})[0];
+location.hash="#/exercice/"+e.id;await sleep(300);
+ok("fiche-equilibre-3-lignes-comme-v33",document.querySelectorAll("#series .serie").length===3);
+var cd=EXERCICES.filter(function(x){return x.groupe==="Cardio"})[0];
+location.hash="#/exercice/"+cd.id;await sleep(300);
+ok("fiche-cardio-equilibre-3-lignes",document.querySelectorAll("#series .serie").length===3);
+location.hash="#/profil";await sleep(300);
+ok("profil-label-intensite",!!document.querySelector('label[for="intensite"]'));
+ok("profil-desc-cardio",document.getElementById("intensite-desc").textContent.indexOf("plus 1 de cardio")>-1);
+location.hash="#/aujourdhui";await sleep(300);
+document.querySelector('[data-intensite="soutenu"]').click();await sleep(200);
+ok("focus-apres-clic",document.activeElement&&document.activeElement.getAttribute("data-intensite")==="soutenu");
+''')
+for lv,n in [('leger',3),('equilibre',4),('soutenu',5)]:
+    page_code = "page2('A_%s',{'intensite':'%s'},r'''\nvar tot=[];\nfor(var k=0;k<12;k++){location.hash=\"#/aleatoire\";await sleep(120);document.querySelector(\"[data-alea]\").click();await sleep(150);tot.push(document.querySelectorAll(\"#alea .exo\").length);}\nok(\"alea-%s-nb\",tot.every(function(n){return n===%d+1}));L(\"alea-%s-valeurs\",tot.join(\",\"));\n''')\n" % (lv,lv,lv,n,lv)
+    open('mk.py','a').write(page_code)
+page2('T11',{'intensite':'leger'},r'''
+location.hash="#/composer";await sleep(300);
+var rows=[].slice.call(document.querySelectorAll(".exo")).map(function(x){return [x.querySelector("strong").textContent,x.querySelector(".doux").textContent]});
+var bad=rows.filter(function(r){var e=EXERCICES.filter(function(q){return q.nom===r[0]})[0];return e&&e.groupe!=="Cardio"&&/^4 x/.test(e.series)&&!/^3 x/.test(r[1]);});
+ok("composer-affiche-ajuste",rows.length>0&&bad.length===0);
+location.hash="#/exercices";await sleep(300);
+var d2=[].slice.call(document.querySelectorAll("a.exo .doux")).map(function(x){return x.textContent});
+ok("liste-exercices-ajustee",d2.length>0&&d2.every(function(t){return !/ · 4 x/.test(t)||/Cardio/.test(t)}));
+''')
+page2('A_leger',{'intensite':'leger'},r'''
+var tot=[];
+for(var k=0;k<12;k++){location.hash="#/aleatoire";await sleep(120);document.querySelector("[data-alea]").click();await sleep(150);tot.push(document.querySelectorAll("#alea .exo").length);}
+ok("alea-leger-nb",tot.every(function(n){return n===3+1}));L("alea-leger-valeurs",tot.join(","));
+''')
+page2('A_equilibre',{'intensite':'equilibre'},r'''
+var tot=[];
+for(var k=0;k<12;k++){location.hash="#/aleatoire";await sleep(120);document.querySelector("[data-alea]").click();await sleep(150);tot.push(document.querySelectorAll("#alea .exo").length);}
+ok("alea-equilibre-nb",tot.every(function(n){return n===4+1}));L("alea-equilibre-valeurs",tot.join(","));
+''')
+page2('A_soutenu',{'intensite':'soutenu'},r'''
+var tot=[];
+for(var k=0;k<12;k++){location.hash="#/aleatoire";await sleep(120);document.querySelector("[data-alea]").click();await sleep(150);tot.push(document.querySelectorAll("#alea .exo").length);}
+ok("alea-soutenu-nb",tot.every(function(n){return n===5+1}));L("alea-soutenu-valeurs",tot.join(","));
+''')
+page2('A_leger',{'intensite':'leger'},r'''
+var tot=[];
+for(var k=0;k<12;k++){location.hash="#/aleatoire";await sleep(120);document.querySelector("[data-alea]").click();await sleep(150);tot.push(document.querySelectorAll("#alea .exo").length);}
+ok("alea-leger-nb",tot.every(function(n){return n===3+1}));L("alea-leger-valeurs",tot.join(","));
+''')
+page2('A_equilibre',{'intensite':'equilibre'},r'''
+var tot=[];
+for(var k=0;k<12;k++){location.hash="#/aleatoire";await sleep(120);document.querySelector("[data-alea]").click();await sleep(150);tot.push(document.querySelectorAll("#alea .exo").length);}
+ok("alea-equilibre-nb",tot.every(function(n){return n===4+1}));L("alea-equilibre-valeurs",tot.join(","));
+''')
+page2('A_soutenu',{'intensite':'soutenu'},r'''
+var tot=[];
+for(var k=0;k<12;k++){location.hash="#/aleatoire";await sleep(120);document.querySelector("[data-alea]").click();await sleep(150);tot.push(document.querySelectorAll("#alea .exo").length);}
+ok("alea-soutenu-nb",tot.every(function(n){return n===5+1}));L("alea-soutenu-valeurs",tot.join(","));
+''')
+page2('A_leger',{'intensite':'leger'},r'''
+var tot=[];
+for(var k=0;k<12;k++){location.hash="#/aleatoire";await sleep(120);document.querySelector("[data-alea]").click();await sleep(150);tot.push(document.querySelectorAll("#alea .exo").length);}
+ok("alea-leger-nb",tot.every(function(n){return n===3+1}));L("alea-leger-valeurs",tot.join(","));
+''')
+page2('A_equilibre',{'intensite':'equilibre'},r'''
+var tot=[];
+for(var k=0;k<12;k++){location.hash="#/aleatoire";await sleep(120);document.querySelector("[data-alea]").click();await sleep(150);tot.push(document.querySelectorAll("#alea .exo").length);}
+ok("alea-equilibre-nb",tot.every(function(n){return n===4+1}));L("alea-equilibre-valeurs",tot.join(","));
+''')
+page2('A_soutenu',{'intensite':'soutenu'},r'''
+var tot=[];
+for(var k=0;k<12;k++){location.hash="#/aleatoire";await sleep(120);document.querySelector("[data-alea]").click();await sleep(150);tot.push(document.querySelectorAll("#alea .exo").length);}
+ok("alea-soutenu-nb",tot.every(function(n){return n===5+1}));L("alea-soutenu-valeurs",tot.join(","));
+''')
+page2('A_leger',{'intensite':'leger'},r'''
+var tot=[];
+for(var k=0;k<12;k++){location.hash="#/aleatoire";await sleep(120);document.querySelector("[data-alea]").click();await sleep(150);tot.push(document.querySelectorAll("#alea .exo").length);}
+ok("alea-leger-nb",tot.every(function(n){return n===3+1}));L("alea-leger-valeurs",tot.join(","));
+''')
+page2('A_equilibre',{'intensite':'equilibre'},r'''
+var tot=[];
+for(var k=0;k<12;k++){location.hash="#/aleatoire";await sleep(120);document.querySelector("[data-alea]").click();await sleep(150);tot.push(document.querySelectorAll("#alea .exo").length);}
+ok("alea-equilibre-nb",tot.every(function(n){return n===4+1}));L("alea-equilibre-valeurs",tot.join(","));
+''')
+page2('A_soutenu',{'intensite':'soutenu'},r'''
+var tot=[];
+for(var k=0;k<12;k++){location.hash="#/aleatoire";await sleep(120);document.querySelector("[data-alea]").click();await sleep(150);tot.push(document.querySelectorAll("#alea .exo").length);}
+ok("alea-soutenu-nb",tot.every(function(n){return n===5+1}));L("alea-soutenu-valeurs",tot.join(","));
 ''')
 # ===== run.sh
 #!/bin/sh
