@@ -103,7 +103,7 @@ window.EXERCICES = [
   { id: "pompes-sangles", nom: "Pompes aux sangles de suspension", groupe: "Pousser", requis: ["sangles"], muscles: "Pectoraux, triceps, gainage", series: "3 x 6 à 12",
     etapes: ["Sangles réglées vers la hauteur des genoux, une poignée dans chaque main.", "En appui sur les poignées, corps gainé en ligne droite.", "Descends en contrôlant l'instabilité, coudes à environ 45°.", "Pousse pour remonter, abdos serrés."],
     erreurs: "Hanches qui s'affaissent, sangles qui frottent l'intérieur des bras.", conseil: "Plus les sangles sont basses, plus c'est dur. Commence haut et descends au fil des semaines." },
-  { id: "rowing-inverse", nom: "Rowing inversé sous une table", groupe: "Tirer", requis: ["banc"], muscles: "Dos, biceps", series: "3 x 8 à 15",
+  { id: "rowing-inverse", nom: "Rowing inversé sous une table", groupe: "Tirer", requis: [], muscles: "Dos, biceps", series: "3 x 8 à 15",
     etapes: ["Allongé sous une table solide et lourde, la poitrine sous le bord.", "Saisis le bord à deux mains, corps tendu, appui sur les talons.", "Tire la poitrine vers le bord en serrant les omoplates.", "Redescends lentement bras tendus."],
     erreurs: "Hanches qui tombent, table trop légère qui bascule (teste-la avant).", conseil: "Plie les genoux pour faciliter, tends le corps pour durcir. Un banc public costaud convient aussi." },
   { id: "rowing-sangles", nom: "Rowing aux sangles de suspension", groupe: "Tirer", requis: ["sangles"], muscles: "Dos, biceps, arrière d'épaules", series: "4 x 8 à 15",
@@ -169,6 +169,16 @@ window.EXERCICES = [
   { id: "squat-saute", nom: "Squats sautés", groupe: "Cardio", requis: [], muscles: "Cuisses, fessiers, cardio", series: "4 x 8 à 12",
     etapes: ["Descends en squat, dos droit, genoux dans l'axe des pieds.", "Explose vers le haut en sautant.", "Réceptionne souplement, genoux fléchis.", "Enchaîne sans temps mort."],
     erreurs: "Genoux qui rentrent à la réception, atterrissage jambes tendues.", conseil: "Exigeant : garde les répétitions propres et coupe la série si la réception devient lourde." }
+,
+  { id: "anges-neiges", nom: "Anges des neiges inversés", groupe: "Tirer", requis: [], muscles: "Haut du dos, arrière d'épaules", series: "3 x 10 à 12",
+    etapes: ["Allongé sur le ventre, bras tendus devant toi, paumes vers le sol.", "Soulève légèrement la poitrine et les bras du sol.", "Ramène les coudes vers les hanches en serrant les omoplates, comme pour tracer un ange dans la neige.", "Tends à nouveau les bras devant sans te poser."],
+    erreurs: "Nuque cassée vers l'arrière, épaules qui montent vers les oreilles.", conseil: "Lent et contrôlé : regarde le sol, la nuque dans le prolongement du dos." },
+  { id: "ytw-allonge", nom: "Y-T-W allongé", groupe: "Tirer", requis: [], muscles: "Haut du dos, arrière d'épaules, bas du dos", series: "2 x 6 à 8 par lettre",
+    etapes: ["Allongé sur le ventre, front au sol, pouces vers le haut.", "Y : lève les bras en diagonale devant toi, marque une pause, redescends.", "T : lève les bras bien à l'horizontale sur les côtés, serre les omoplates, redescends.", "W : coudes pliés près du corps, lève les mains vers le plafond en serrant les omoplates."],
+    erreurs: "Prendre de l'élan pour soulever les bras, cambrer le bas du dos.", conseil: "Sans poids, petit mouvement : la difficulté vient du contrôle, pas de l'amplitude." },
+  { id: "rowing-sac", nom: "Rowing au sac à dos lesté", groupe: "Tirer", requis: [], muscles: "Dos, biceps", series: "3 x 10 à 15",
+    etapes: ["Leste un sac à dos (livres, bouteilles d'eau) et saisis-le à deux mains par les bretelles.", "Penché en avant à 45 degrés, dos droit, genoux souples, le sac pend vers le sol.", "Tire le sac vers le nombril en serrant les omoplates.", "Redescends lentement sans arrondir le dos."],
+    erreurs: "Dos rond, élan du buste pour monter la charge.", conseil: "5 à 10 kg suffisent pour commencer. Serre les bretelles pour que le sac ne ballotte pas." }
 ];
 
 

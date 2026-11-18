@@ -113,3 +113,27 @@ ok("import-invalide->masse",all.some(function(p){return p.nom==="Ami2"&&p.object
 page2('S1',{'objectif':'seche'},'location.hash="#/profil";await sleep(400);')
 page2('S2',{'objectif':'seche'},'location.hash="#/aujourdhui";await sleep(400);document.getElementById("nutrition").setAttribute("open","");')
 page2('S3',{},'location.hash="#/aujourdhui";await sleep(400);document.getElementById("nutrition").setAttribute("open","");')
+page2('T12',{'materiel':[]},r'''
+// Tirer sans matériel : le catalogue offre >= 5 exercices Tirer faisables à mains nues (jour-indépendant)
+var tirer = EXERCICES.filter(function(e){return e.groupe==="Tirer" && e.requis.every(function(r){return r==="corps";});});
+ok("tirer-catalogue>=5",tirer.length>=5);
+ok("rowing-inverse-sans-materiel",tirer.some(function(e){return e.id==="rowing-inverse";}));
+["superman","anges-neiges","ytw-allonge","rowing-sac"].forEach(function(id){ok("a-"+id,tirer.some(function(e){return e.id===id;}));});
+// Aujourd'hui (jour Tirer si 18/11/2026 ou tout jour %4==2) : la séance combine plusieurs Tirer et affiche l'indice élastique
+location.hash="#/aujourdhui";await sleep(400);
+var focus=(document.querySelector("#seance-jour h3")||{}).textContent||"";
+L("focus-jour",focus);
+if(focus.indexOf("Tirer")>-1){
+  var nTirer=0;document.querySelectorAll(".exo .corps a").forEach(function(a){var id=a.getAttribute("href").split("/").pop();var e=EXERCICES.find(function(x){return x.id===id;});if(e&&e.groupe==="Tirer")nTirer++;});
+  ok("tirer-seance>=3",nTirer>=3);
+  var paras=[].map.call(document.querySelectorAll("p"),function(x){return x.textContent;}).join(" ");ok("indice-elastique",paras.indexOf("quelques euros")>-1);
+}
+''')
+page2('T13',{'materiel':["elastique"]},r'''
+// Avec élastique : pas d'indice d'achat, rowing-inverse toujours faisable
+location.hash="#/aujourdhui";await sleep(400);
+var paras=[].map.call(document.querySelectorAll("p"),function(x){return x.textContent;}).join(" ");ok("pas-d-indice",paras.indexOf("quelques euros")===-1);
+var ri=EXERCICES.find(function(x){return x.id==="rowing-inverse";});
+ok("rowing-inverse-toujours-faisable",ri.requis.length===0);
+''')
+page2('S4',{'materiel':[]},'location.hash="#/aujourdhui";await sleep(400);window.scrollTo(0,0);')

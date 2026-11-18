@@ -883,6 +883,7 @@
       h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div>" + infoSeries(p, e) + "</div>" +
         '<button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '" aria-label="' + (fait ? "Validé : " : "Valider : ") + esc(e.nom) + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
     });
+    if (s.focus === "Tirer" && p.materiel.indexOf("elastique") === -1) h += '<p class="doux" style="margin:6px 4px 0">Sans matériel, le rowing inversé sous une table et les exercices au sol font déjà bien le travail. Avec un élastique de résistance (quelques euros), trois autres tirages s\'ouvrent : rowing assis, tirage vertical et face pull.</p>';
     h += blocRetourCalme(grp);
     h += blocChanger(p);
     var n = besoins(p);

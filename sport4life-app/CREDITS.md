@@ -66,3 +66,8 @@ v22 : photos des échauffements et étirements (Pexels, 400 x 300). Tima Miroshn
   - Crunch sur Swiss ball : "Crunches with legs on stability ball 1.svg" et "Crunches with legs on stability ball 2.svg".
   - Planche latérale : "Side plank 1.svg" et "Side plank 2.svg".
   - Montées sur step : "Step ups with dumbbells 1.svg" et "Step ups with dumbbells 2.svg".
+
+## v35 (jours Tirer sans matériel)
+
+- Le rowing inversé sous une table ne demande plus le matériel « chaise ou banc » : une table solide suffit (consignes de prudence déjà en place).
+- 3 nouvelles fiches rédigées pour Sport4Life : anges des neiges inversés, Y-T-W allongé, rowing au sac à dos lesté. Mouvements standards du renforcement du dos au poids du corps (références consultées : Aaptiv, bodyweight back exercises ; The Workout Mag, back workouts no weights ; 225fitnessstudio.fr, séance dos sans matériel). Aucun contenu copié.
