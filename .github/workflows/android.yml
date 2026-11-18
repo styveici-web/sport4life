@@ -39,7 +39,10 @@ jobs:
 
       - name: Installer les dépendances (lockfile, sans scripts postinstall)
         working-directory: android-app
-        run: npm ci --ignore-scripts
+        run: |
+          npm ci --ignore-scripts
+          # sharp (generation des icones) a besoin de son binaire natif : on ne relance que son script d'installation, epingle par le lockfile.
+          npm rebuild sharp
 
       - name: Créer le projet Android
         working-directory: android-app
