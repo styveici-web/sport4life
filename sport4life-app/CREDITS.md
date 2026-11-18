@@ -58,14 +58,11 @@ v22 : photos des échauffements et étirements (Pexels, 400 x 300). Tima Miroshn
 - Valeurs nutritionnelles des ingrédients (data/foods.js) : table de composition ANSES-CIQUAL 2025 (https://ciqual.anses.fr ; fichier publié sur entrepot.recherche.data.gouv.fr, doi 10.57745/RPWYZD), aliments génériques, valeurs pour 100 g, avec le code et le libellé CIQUAL de chaque ingrédient. Les kcal et protéines des repas sont calculées sur les grammes indiqués. Les tags allergènes et les poids d'unité (repères) ne proviennent pas de CIQUAL.
 - Recettes des repas rédigées pour Sport4Life. Aucune photo ni illustration ajoutée.
 
-## v35 (dessins de mouvement, échantillon)
+## v35 (illustrations de mouvement originales)
 
-- Dessins de mouvement ajoutés : Everkinetic, CC BY-SA 3.0, via Wikimedia Commons, fichiers SVG d'origine sans modification :
-  - Rowing inversé : "Body row 1.svg" et "Body row 2.svg".
-  - Pompes diamant : "Close triceps pushup 1.svg" et "Close triceps pushup 2.svg".
-  - Crunch sur Swiss ball : "Crunches with legs on stability ball 1.svg" et "Crunches with legs on stability ball 2.svg".
-  - Planche latérale : "Side plank 1.svg" et "Side plank 2.svg".
-  - Montées sur step : "Step ups with dumbbells 1.svg" et "Step ups with dumbbells 2.svg".
+- Tous les exercices (53 fiches) ont maintenant deux dessins de mouvement (départ et arrivée) : illustrations originales noir et blanc, style gravure au trait, créées pour Sport4Life (générées par IA puis vérifiées une par une : posture, matériel conforme à la fiche, silhouettes variées). Aucune image tierce.
+- Ces illustrations remplacent tous les dessins Everkinetic précédemment utilisés (pompes, pompes pieds surélevés, dips sur chaise, développé haltères, tractions, superman, rowing inversé, pompes diamant, crunch swiss ball, planche latérale, montées sur step, curl haltères, pont fessier, roue abdominale, squat lesté) ainsi que la première paire originale du lancer de médecine-ball. Les dessins Everkinetic ne sont plus utilisés nulle part dans l'app ; leur crédit est retiré des écrans (les mentions ci-dessus restent pour l'historique). La provenance des couleurs musculaires (onglet Muscles) reste indiquée dans chaque fiche.
+- Les schémas musculaires OpenStax / T. Kebert (CC BY-SA 4.0) sont inchangés et toujours utilisés.
 
 ## v35 (jours Tirer sans matériel)
 
