@@ -61,6 +61,19 @@
       valides: {}, poidsLog: [], journal: {}
     };
   }
+  // v35.2 : mesures bornees (taille 100-250 cm, poids 30-300 kg, age 14-100 ans). Une valeur illisible redevient vide, une valeur hors limites est ramenee a la borne la plus proche.
+  function borneMesure(v, min, max, entier) {
+    if (v == null || String(v).trim() === "") return "";
+    var n = parseFloat(String(v).replace(",", "."));
+    if (!isFinite(n)) return "";
+    if (n < min) n = min; else if (n > max) n = max;
+    return String(entier ? Math.round(n) : Math.round(n * 10) / 10);
+  }
+  function bornesMesures(p) {
+    p.taille = borneMesure(p.taille, 100, 250, true);
+    p.poids = borneMesure(p.poids, 30, 300, false);
+    p.age = borneMesure(p.age, 14, 100, true);
+  }
   function normaliser(p) {
     if (!p.id) p.id = uid();
     if (!Array.isArray(p.materiel)) p.materiel = ["corps"];
@@ -75,6 +88,8 @@
       }
     }
     ["nom", "taille", "poids", "age", "sexe", "note"].forEach(function (k) { if (p[k] == null) p[k] = ""; });
+    // v35.2 : bornes appliquees aussi au chargement et a l'import (profils existants dans les limites inchanges).
+    bornesMesures(p);
     if (!p.activite) p.activite = "1.55";
     if (!p.lieu) p.lieu = "lesdeux";
     // v34 : intensité de l'entraînement. Valeur par défaut = « équilibrée » = comportement d'avant (rien ne change tant qu'on ne la modifie pas).
@@ -129,8 +144,15 @@
       try {
         var s = JSON.parse(brut);
         if (s && Array.isArray(s.profils) && s.profils.length) {
-          s.profils.forEach(normaliser);
+          var corrige = false;
+          s.profils.forEach(function (q) {
+            var avant = JSON.stringify([q.taille, q.poids, q.age]);
+            normaliser(q);
+            if (JSON.stringify([q.taille, q.poids, q.age]) !== avant) corrige = true;
+          });
           if (!s.actif) s.actif = s.profils[0].id;
+          // v35.2 : si des mesures hors limites ont ete corrigees au chargement, la correction est enregistree.
+          if (corrige) { try { localStorage.setItem(CLE, JSON.stringify(s)); } catch (e) {} }
           return s;
         }
       } catch (e) {}
@@ -192,7 +214,7 @@
     });
     var dates = {};
     (Array.isArray(imp.poidsLog) ? imp.poidsLog : []).forEach(function (l) {
-      if (!objet(l) || typeof l.date !== "string" || !RE_DATE.test(l.date) || typeof l.kg !== "number" || !(l.kg > 20 && l.kg < 400)) { r.ignores++; return; }
+      if (!objet(l) || typeof l.date !== "string" || !RE_DATE.test(l.date) || typeof l.kg !== "number" || !(l.kg >= 30 && l.kg <= 300)) { r.ignores++; return; }
       if (aP(dates, l.date)) return;
       dates[l.date] = 1;
       var ex = loc.poidsLog.filter(function (x) { return x.date === l.date; })[0];
@@ -1156,6 +1178,9 @@
     p.nom = g("nom").trim() || "Sans nom";
     p.taille = g("taille").trim().replace(",", "."); p.poids = g("poids").trim().replace(",", "."); p.age = g("age"); p.sexe = g("sexe"); p.activite = g("activite"); p.lieu = g("lieu"); if (document.getElementById("intensite")) p.intensite = g("intensite"); if (document.getElementById("objectif")) p.objectif = g("objectif");
     p.materiel = [].slice.call(document.querySelectorAll("[data-mat]")).filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute("data-mat"); });
+    // v35.2 : les mesures saisies sont bornees tout de suite et la valeur corrigee est reaffichee dans le champ.
+    bornesMesures(p);
+    ["taille", "poids", "age"].forEach(function (i) { var el = document.getElementById(i); if (el && String(el.value).trim() !== "" && el.value !== p[i]) el.value = p[i]; });
     sauver();
     return p;
   }
@@ -1266,7 +1291,7 @@
       etat.profils.push(n); etat.actif = n.id; sauver(); route();
     } else if (t.dataset.pesee) {
       var kg = parseFloat(String(document.getElementById("pesee").value).replace(",", "."));
-      if (!(kg > 20 && kg < 400)) { alert("Entre ton poids du jour en kg (par exemple 74.5)."); return; }
+      if (!(kg >= 30 && kg <= 300)) { alert("Entre ton poids du jour en kg, entre 30 et 300 (par exemple 74.5)."); return; }
       p.poids = String(kg);
       var d = aujourdhui();
       p.poidsLog = p.poidsLog.filter(function (l) { return l.date !== d; });
