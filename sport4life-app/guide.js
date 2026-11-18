@@ -337,7 +337,6 @@
     cachePl[cle] = u; return u;
   }
   function png(src) { return /^data:image\/png/.test(src) ? ' class="png"' : ""; }
-  var PORTRAIT = { "developpe-halteres": 1, "tractions": 1, "curl-halteres": 1 };
   function vig(e) {
     var d = drawOf(e), m = aMus(e);
     if (d) return '<span class="vignette vig vig-d" aria-hidden="true"><img src="' + d[1] + '"' + png(d[1]) + ' alt="" width="64" height="64"></span>';
@@ -347,7 +346,7 @@
   // Grande illustration pendant la séance (un appui ouvre le volet de détail).
   function illu(e) {
     var d = drawOf(e);
-    if (d) return '<button class="gs-ill gs-ill-d' + (PORTRAIT[ALIAS[e.id] || e.id] ? " port" : "") + '" data-guide="tab-mouv" aria-label="Voir le mouvement en détail"><span class="gs-fr"><img src="' + d[0] + '"' + png(d[0]) + ' alt=""><i>Départ</i></span><span class="gs-arr" aria-hidden="true">›</span><span class="gs-fr"><img src="' + d[1] + '"' + png(d[1]) + ' alt=""><i>Arrivée</i></span></button>';
+    if (d) return '<button class="gs-ill gs-ill-d' + "" + '" data-guide="tab-mouv" aria-label="Voir le mouvement en détail"><span class="gs-fr"><img src="' + d[0] + '"' + png(d[0]) + ' alt=""><i>Départ</i></span><span class="gs-arr" aria-hidden="true">›</span><span class="gs-fr"><img src="' + d[1] + '"' + png(d[1]) + ' alt=""><i>Arrivée</i></span></button>';
     var m = aMus(e);
     if (m) {
       // Un seul côté concerné : on montre cette vue seule, en plus grand (le volet Muscles garde la planche complète).
