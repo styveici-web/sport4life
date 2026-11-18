@@ -1,0 +1,127 @@
+# Sport4Life v34 - tests intensité (Chrome headless). Usage: python3 mk.py (écrit sport4life-app/_t_*.html), sh run.sh T1 T2 ... puis supprimer _t_*.html
+# ===== mk.py
+import sys,re,json
+R='/tmp/t'
+idx=open('/tmp/sport4life/sport4life-app/index.html').read()
+PRE=r'''<script>
+window.Capacitor={Plugins:{LocalNotifications:{schedule:function(){return Promise.resolve()},requestPermissions:function(){return Promise.resolve({display:"granted"})},checkPermissions:function(){return Promise.resolve({display:"granted"})},cancel:function(){return Promise.resolve()},createChannel:function(){return Promise.resolve()}}}};
+window.LOGS=[];function L(k,v){LOGS.push(k+": "+(v===true?"OK":v===false?"ECHEC":v));}
+function ok(k,c){L(k,!!c);}
+window.confirm=function(){return true};window.alert=function(){};
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+function fin(){document.documentElement.setAttribute("data-log",LOGS.join(" || "));}
+function PROF(i){return JSON.parse(localStorage.getItem("sport4life.v1")).profils[i||0];}
+function seed(p){localStorage.clear();localStorage.setItem("sport4life.v1",JSON.stringify({actif:p.id,profils:[p]}));}
+var MAT=["corps","halteres","disques","elastique","abwheel","corde","medball","gilet"];
+function prof(extra){var p={id:"p1",nom:"Test",taille:"180",poids:"75",age:"30",sexe:"h",activite:"1.55",materiel:MAT,lieu:"lesdeux",migre3:true,valides:{},poidsLog:[],journal:{}};Object.keys(extra||{}).forEach(function(k){p[k]=extra[k]});return p;}
+function liste(){return [].slice.call(document.querySelectorAll("#seance-proposee ~ .exo")).map(function(d){return d.querySelector("strong").textContent+"|"+d.querySelector(".doux").textContent;});}
+</script>'''
+def page(name,body):
+    h=idx.replace('<script src="data/exercises.js','<script>/*pre*/</script>'+PRE+'<script src="data/exercises.js',1)
+    h=h.replace('</body>','<script>window.addEventListener("load",function(){setTimeout(async function(){try{'+body+'}catch(e){L("EXC",String(e&&e.stack||e))}fin();},400)});</script></body>')
+    h=h.replace('<script>/*pre*/</script>','')
+    # seed must run before app.js: inject seed call before exercises.js
+    open('/tmp/sport4life/sport4life-app/_t_'+name+'.html','w').write(h)
+SEEDPRE=lambda extra: 'seed(prof(%s));'%json.dumps(extra)
+tests={}
+# seeding before app load: use a separate pre-seed script inserted before app scripts
+def page2(name,extra,body):
+    h=idx.replace('<script src="data/exercises.js','<script>'+PRE.split('<script>')[1].split('</script>')[0]+'</script><script>seed(prof(%s));</script><script src="data/exercises.js'%json.dumps(extra),1)
+    h=h.replace('</body>','<script>window.addEventListener("load",function(){setTimeout(async function(){try{'+body+'}catch(e){L("EXC",String(e&&e.stack||e))}fin();},500)});</script></body>')
+    open('/tmp/sport4life/sport4life-app/_t_'+name+'.html','w').write(h)
+BASE=r'''var base={};EXERCICES.forEach(function(e){base[e.id]=e.series});
+function parse(l){return l.map(function(x){var a=x.split("|");return {n:a[0],s:a[1]};});}
+function nb(s){var m=s.match(/^\s*(\d+)\s*x/);return m?+m[1]:null;}
+function baseSer(name){var e=EXERCICES.filter(function(x){return x.nom===name})[0];return e?e.series:null;}
+'''
+def check(level,nexo,delta):
+    return BASE+r'''
+location.hash="#/aujourdhui";await sleep(300);
+var l=parse(liste());
+ok("%(lv)s-nb-exos", l.length===%(n)d+1);
+var cardio=l[l.length-1];
+var okSer=true,detail=[];
+l.forEach(function(x,i){var b=baseSer(x.n),n0=nb(b),n1=nb(x.s);var ex=EXERCICES.filter(function(e){return e.nom===x.n})[0];
+  var exp=n0; if(%(d)d!==0 && ex.groupe!=="Cardio" && n0>=3) exp=Math.max(2,Math.min(5,n0+%(d)d));
+  if(n1!==exp){okSer=false;detail.push(x.n+":"+b+"->"+x.s)}});
+ok("%(lv)s-series",okSer); if(!okSer)L("%(lv)s-detail",detail.join(";"));
+ok("%(lv)s-cardio-inchange", cardio.s===baseSer(cardio.n));
+ok("%(lv)s-echauffement-present", !!document.getElementById("echauffement")&&!!document.getElementById("retour-calme"));
+var g=S4Guide.sources.jour();ok("%(lv)s-guide-liste", g.length===%(n)d+1 && g.every(function(e,i){return e.series===l[i].s}));
+L("%(lv)s-minutes-sans-echauf", Math.round(S4Guide.estimer(g,false)/60));
+L("%(lv)s-minutes-avec-echauf", Math.round(S4Guide.estimer(g,true)/60));
+L("%(lv)s-liste", l.map(function(x){return x.n+" "+x.s}).join(" / "));
+'''%dict(lv=level,n=nexo,d=delta)
+page2('T1',{},check('defaut-sans-champ',4,0)+r'''ok("defaut-bouton-equilibre-presse", document.querySelector('[data-intensite="equilibre"]').getAttribute("aria-pressed")==="true");''')
+page2('T2',{'intensite':'leger'},check('leger',3,-1))
+page2('T3',{'intensite':'equilibre'},check('equilibre',4,0))
+page2('T4',{'intensite':'soutenu'},check('soutenu',5,1))
+page2('T5',{'intensite':'nimporte'},r'''location.hash="#/aujourdhui";await sleep(300);ok("invalide->equilibre-5-exos",liste().length===5&&document.querySelector('[data-intensite="equilibre"]').getAttribute("aria-pressed")==="true");''')
+# click on home, persists, valides intact
+page2('T6',{'valides':{'2026-11-18':['x']}},r'''
+location.hash="#/aujourdhui";await sleep(300);
+var n0=liste().length;
+document.querySelector('[data-intensite="soutenu"]').click();await sleep(200);
+ok("clic-soutenu-persiste",PROF().intensite==="soutenu");
+ok("clic-soutenu-6-exos",liste().length===6&&n0===5);
+ok("bouton-presse",document.querySelector('[data-intensite="soutenu"]').getAttribute("aria-pressed")==="true");
+document.querySelector('[data-intensite="leger"]').click();await sleep(200);
+ok("clic-leger-4-exos",liste().length===4&&PROF().intensite==="leger");
+ok("valides-intacts",JSON.stringify(PROF().valides)==='{"2026-11-18":["x"]}');
+ok("journal-intact",JSON.stringify(PROF().journal)==='{}');
+document.querySelector('[data-intensite="equilibre"]').click();await sleep(200);
+ok("retour-equilibre",liste().length===5);
+// profil select
+location.hash="#/profil";await sleep(300);
+var sel=document.getElementById("intensite");ok("profil-select",!!sel&&sel.value==="equilibre");
+sel.value="leger";document.querySelector("form button[type=submit], form button:not([type])").click();await sleep(300);
+ok("profil-enregistre-leger",PROF().intensite==="leger");
+location.hash="#/aujourdhui";await sleep(300);ok("accueil-leger-apres-profil",liste().length===4);
+''')
+# export/import
+page2('T7',{'intensite':'soutenu'},r'''
+location.hash="#/profil";await sleep(300);
+var imp=JSON.parse(JSON.stringify(PROF()));imp.id="p2";imp.nom="Ami";imp.intensite="leger";
+var z=document.getElementById("zone-transfert");L("zone",!!z);
+z.value=JSON.stringify({profils:[imp]});document.querySelector("[data-import]").click();await sleep(300);
+var all=JSON.parse(localStorage.getItem("sport4life.v1")).profils;
+L("profils",all.length+":"+all.map(function(p){return p.nom+"="+p.intensite}).join(","));
+ok("import-garde-leger",all.some(function(p){return p.nom==="Ami"&&p.intensite==="leger"}));
+ok("local-inchange",all[0].intensite==="soutenu");
+var imp2=JSON.parse(JSON.stringify(imp));imp2.id="p3";imp2.nom="Ami2";imp2.intensite="<img src=x onerror=1>";
+z=document.getElementById("zone-transfert");z.value=JSON.stringify({profils:[imp2]});document.querySelector("[data-import]").click();await sleep(300);
+all=JSON.parse(localStorage.getItem("sport4life.v1")).profils;
+ok("import-invalide->equilibre",all.some(function(p){return p.nom==="Ami2"&&p.intensite==="equilibre"}));
+''')
+# exercise sheet default rows + perso + alea adapted
+page2('T8',{'intensite':'leger'},r'''
+var e=EXERCICES.filter(function(x){return x.groupe!=="Cardio"&&nb0(x.series)===4})[0];
+function nb0(s){var m=s.match(/^\s*(\d+)\s*x/);return m?+m[1]:null}
+location.hash="#/exercice/"+e.id;await sleep(300);
+ok("fiche-3-lignes-serie-leger",document.querySelectorAll("#series .serie").length===3);
+ok("fiche-volume-conseille",document.body.textContent.indexOf("Volume conseillé : 3 x")>-1);
+var p=PROF();p.perso={date:new Date().toISOString().slice(0,10),exos:[e.id]};
+localStorage.setItem("sport4life.v1",JSON.stringify({actif:p.id,profils:[p]}));
+var g=S4Guide.sources.perso();ok("perso-adaptee",g.length===1&&g[0].series.indexOf("3 x")===0&&e.series.indexOf("4 x")===0);
+''')
+# screenshot pages
+def shot(name,extra,hash):
+    page2(name,extra,'location.hash="%s";await sleep(300);'%hash)
+shot('S1',{'intensite':'soutenu'},'#/aujourdhui')
+shot('S2',{'intensite':'leger'},'#/aujourdhui')
+shot('S3',{'intensite':'equilibre'},'#/profil')
+
+
+import datetime
+d=datetime.date.today().isoformat()
+page2('T9',{'intensite':'soutenu','perso':{'date':d,'exos':['pompes']},'aleatoire':{'date':d,'exos':['pompes'],'repas':[]}},r'''
+var g=S4Guide.sources.perso();ok("perso-soutenu",g.length===1&&g[0].series.indexOf("5 x")===0);
+var a=S4Guide.sources.alea();ok("alea-soutenu",a.length===1&&a[0].series.indexOf("5 x")===0);
+''')
+# ===== run.sh
+#!/bin/sh
+cd /tmp/sport4life/sport4life-app
+for n in "$@"; do
+ echo "== $n"
+ google-chrome --headless=new --no-sandbox --disable-gpu --user-data-dir=/tmp/t/ud_$n --virtual-time-budget=8000 --dump-dom file:///tmp/sport4life/sport4life-app/_t_$n.html 2>/dev/null | grep -o 'data-log="[^"]*"' | sed 's/data-log="//; s/"$//' | sed 's/ || /\n/g; s/&quot;/"/g; s/&gt;/>/g'
+done

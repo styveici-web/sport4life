@@ -25,6 +25,15 @@
   }
 
   // ---------- Stockage local ----------
+  // ---------- Intensité (v34) ----------
+  // Trois niveaux par profil. « Équilibrée » reproduit exactement la séance d'avant (4 exercices + 1 de cardio, séries du catalogue).
+  // Léger : 1 exercice et 1 série de moins ; Soutenu : 1 exercice et 1 série de plus (2 à 5 séries au total par exercice).
+  // L'échauffement, les étirements, les répétitions cibles et les repos ne changent pas.
+  var INTENSITES = [
+    { id: "leger", nom: "Léger", exos: 3, delta: -1, desc: "3 exercices, une série de moins par exercice. Pour les jours de fatigue, de reprise ou quand tu es court en temps." },
+    { id: "equilibre", nom: "Équilibré", exos: 4, delta: 0, desc: "4 exercices plus 1 de cardio, séries du catalogue. C'est la séance habituelle." },
+    { id: "soutenu", nom: "Soutenu", exos: 5, delta: 1, desc: "5 exercices, une série de plus par exercice. Pour les jours où tu as du temps et de l'énergie." }
+  ];
   function exemple() {
     return {
       id: uid(), nom: "Exemple : capoeiriste", taille: "", poids: "", age: "", sexe: "", activite: "1.55",
@@ -49,6 +58,8 @@
     ["nom", "taille", "poids", "age", "sexe", "note"].forEach(function (k) { if (p[k] == null) p[k] = ""; });
     if (!p.activite) p.activite = "1.55";
     if (!p.lieu) p.lieu = "lesdeux";
+    // v34 : intensité de l'entraînement. Valeur par défaut = « équilibrée » = comportement d'avant (rien ne change tant qu'on ne la modifie pas).
+    if (INTENSITES.map(function (x) { return x.id; }).indexOf(p.intensite) === -1) p.intensite = "equilibre";
     // v32 : "autre" éclate en chaise/banc et barre de traction. Ajout seulement, rien n'est retiré.
     if (p.materiel.indexOf("autre") !== -1) {
       ["banc", "barre"].forEach(function (m) { if (p.materiel.indexOf(m) === -1) p.materiel.push(m); });
@@ -270,8 +281,25 @@
     for (var i = 0; i < MATERIEL.length; i++) if (MATERIEL[i].id === id) return MATERIEL[i].nom;
     return id;
   }
+  function intensiteDe(p) {
+    for (var i = 0; i < INTENSITES.length; i++) if (p && INTENSITES[i].id === p.intensite) return INTENSITES[i];
+    return INTENSITES[1];
+  }
+  // Copie de l'exercice avec le nombre de séries ajusté (« 3 x 12 à 20 » -> « 2 x 12 à 20 »). Le cardio et les formats à 1 ou 2 séries restent tels quels.
+  function adapter(e, p) {
+    if (!e) return e;
+    var d = intensiteDe(p).delta, m = (e.series || "").match(/^(\s*)(\d+)(\s*x\b)/i);
+    if (!d || !m || e.groupe === "Cardio") return e;
+    var n = parseInt(m[2], 10);
+    if (n < 3) return e;
+    var n2 = Math.max(2, Math.min(5, n + d));
+    if (n2 === n) return e;
+    var c = {}; Object.keys(e).forEach(function (k) { c[k] = e[k]; });
+    c.series = m[1] + n2 + (e.series || "").slice(m[0].length - m[3].length);
+    return c;
+  }
   function exoParId(id) {
-    for (var i = 0; i < EXERCICES.length; i++) if (EXERCICES[i].id === id) return EXERCICES[i];
+    for (var i = 0; i < EXERCICES.length; i++) if (EXERCICES[i].id === id) return adapter(EXERCICES[i], profil());
   }
   function etiquettesMat(exo) {
     return (exo.requis.length ? exo.requis : ["corps"]).map(function (r) {
@@ -287,17 +315,18 @@
     var principaux = ok.filter(function (e) { return e.groupe === foc; });
     var autres = ok.filter(function (e) { return e.groupe !== foc && e.groupe !== "Cardio"; });
     var liste = [];
-    if (principaux.length > 4) {
+    var nb = intensiteDe(p).exos;
+    if (principaux.length > nb) {
       var dec = jourAnnee() % principaux.length;
-      for (var q = 0; q < 4; q++) liste.push(principaux[(dec + q) % principaux.length]);
-    } else liste = principaux.slice(0, 4);
-    for (var i = 0; liste.length < 4 && i < autres.length; i++) {
+      for (var q = 0; q < nb; q++) liste.push(principaux[(dec + q) % principaux.length]);
+    } else liste = principaux.slice(0, nb);
+    for (var i = 0; liste.length < nb && i < autres.length; i++) {
       var k = (jourAnnee() + i) % autres.length;
       if (liste.indexOf(autres[k]) === -1) liste.push(autres[k]);
     }
     var fin = ok.filter(function (e) { return e.groupe === "Cardio"; });
     if (fin.length) liste.push(fin[jourAnnee() % fin.length]);
-    return { focus: foc, liste: liste };
+    return { focus: foc, liste: liste.map(function (e) { return adapter(e, p); }) };
   }
 
   // ---------- Nutrition ----------
@@ -310,7 +339,7 @@
   }
 
 
-  var V = "33";
+  var V = "34";
   function vignette(e) {
     // v31 : miniature claire et lisible (dessin du mouvement, sinon planche musculaire face ou dos), fournie par guide.js.
     if (window.S4L && S4L.vig) return S4L.vig(e);
@@ -456,6 +485,7 @@
     h += '<label for="activite">Niveau d\'activité</label><select id="activite">' + ACTIVITES.map(function (x) {
       return '<option value="' + x[0] + '"' + (p.activite === x[0] ? " selected" : "") + ">" + x[1] + "</option>";
     }).join("") + "</select>";
+    h += '<h3 style="margin-top:16px">Intensité de l\'entraînement</h3><select id="intensite" aria-describedby="intensite-desc">' + INTENSITES.map(function (x) { return '<option value="' + x.id + '"' + (intensiteDe(p).id === x.id ? " selected" : "") + ">" + x.nom + "</option>"; }).join("") + '</select><p class="doux petit" id="intensite-desc">' + INTENSITES.map(function (x) { return "<strong>" + x.nom + "</strong> : " + esc(x.desc); }).join("<br>") + "<br>L'échauffement et les étirements restent toujours proposés. Tu peux changer ce réglage à tout moment.</p>";
     h += '<h3 style="margin-top:16px">Où t\'entraînes-tu ?</h3><select id="lieu">' +
       [["lesdeux", "Aux deux endroits"], ["maison", "À la maison"], ["exterieur", "En extérieur"]].map(function (x) {
         return '<option value="' + x[0] + '"' + ((p.lieu || "lesdeux") === x[0] ? " selected" : "") + ">" + x[1] + "</option>";
@@ -797,6 +827,7 @@
     var h = alerteHtml() + "<h2>Séance du jour</h2>";
     h += '<div class="carte verre" id="seance-jour"><p class="doux">' + esc(new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })) + "</p>";
     h += "<h3>Focus : " + esc(s.focus) + "</h3>";
+    h += '<div class="seg" role="group" aria-label="Intensité de la séance">' + INTENSITES.map(function (x) { var on = intensiteDe(p).id === x.id; return '<button class="' + (on ? "" : "second") + '" data-intensite="' + x.id + '" aria-pressed="' + on + '">' + x.nom + "</button>"; }).join("") + "</div>";
     h += '<p class="doux">' + s.liste.length + " exercice" + (s.liste.length > 1 ? "s" : "") + " choisis selon ton matériel · " + nbFaits + "/" + s.liste.length + " validé" + (nbFaits > 1 ? "s" : "") + ".</p>";
     if (window.S4Guide && s.liste.length) {
       var est = estMin(s.liste);
@@ -912,7 +943,7 @@
     var pf = profil(), serie = seriesOverride;
     if (!serie) {
       var auj = pf.journal[aujourdhui()] && pf.journal[aujourdhui()][e.id], der = derniereSeance(pf, e.id);
-      serie = auj && auj.length ? auj : der ? der.series : [{ r: "", k: "" }, { r: "", k: "" }, { r: "", k: "" }];
+      serie = auj && auj.length ? auj : der ? der.series : (function () { var m = (e.series || "").match(/^\s*(\d+)\s*x/i), n = m ? Math.max(1, Math.min(6, parseInt(m[1], 10))) : 3, t = []; for (var i = 0; i < n; i++) t.push({ r: "", k: "" }); return t; })();
       serie = serie.map(function (x) { return { r: x.r, k: x.k }; });
     }
     h += blocSeries(pf, e, serie, note);
@@ -988,6 +1019,7 @@
     h += '<label for="activite">Niveau d\'activité</label><select id="activite">' + ACTIVITES.map(function (a) {
       return '<option value="' + a[0] + '"' + (p.activite === a[0] ? " selected" : "") + ">" + a[1] + "</option>";
     }).join("") + "</select>";
+    h += '<h3 style="margin-top:16px">Intensité de l\'entraînement</h3><select id="intensite" aria-describedby="intensite-desc">' + INTENSITES.map(function (x) { return '<option value="' + x.id + '"' + (intensiteDe(p).id === x.id ? " selected" : "") + ">" + x.nom + "</option>"; }).join("") + '</select><p class="doux petit" id="intensite-desc">' + INTENSITES.map(function (x) { return "<strong>" + x.nom + "</strong> : " + esc(x.desc); }).join("<br>") + "<br>L'échauffement et les étirements restent toujours proposés. Tu peux changer ce réglage à tout moment.</p>";
     h += '<h3 style="margin-top:16px">Où t\'entraînes-tu ?</h3><select id="lieu">' +
       [["lesdeux", "Aux deux endroits"], ["maison", "À la maison"], ["exterieur", "En extérieur"]].map(function (x) {
         return '<option value="' + x[0] + '"' + ((p.lieu || "lesdeux") === x[0] ? " selected" : "") + ">" + x[1] + "</option>";
@@ -1077,7 +1109,7 @@
     p = p || profil();
     var g = function (i) { return document.getElementById(i).value; };
     p.nom = g("nom").trim() || "Sans nom";
-    p.taille = g("taille").trim().replace(",", "."); p.poids = g("poids").trim().replace(",", "."); p.age = g("age"); p.sexe = g("sexe"); p.activite = g("activite"); p.lieu = g("lieu");
+    p.taille = g("taille").trim().replace(",", "."); p.poids = g("poids").trim().replace(",", "."); p.age = g("age"); p.sexe = g("sexe"); p.activite = g("activite"); p.lieu = g("lieu"); if (document.getElementById("intensite")) p.intensite = g("intensite");
     p.materiel = [].slice.call(document.querySelectorAll("[data-mat]")).filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute("data-mat"); });
     sauver();
     return p;
@@ -1087,6 +1119,7 @@
   vue.addEventListener("click", function (ev) {
     var t = ev.target.closest("button");
     if (!t) return;
+    if (t.dataset.intensite) { var pi = profil(); if (pi && INTENSITES.some(function (x) { return x.id === t.dataset.intensite; })) { pi.intensite = t.dataset.intensite; sauver(); route(true); } return; }
     if (t.dataset.sauvegarde) { telechargerSauvegarde(); return; }
     if (t.dataset.exemple) {
       var ex = exemple(); etat.profils.push(ex); etat.actif = ex.id; sauver(); route(); return;
