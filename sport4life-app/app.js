@@ -70,6 +70,9 @@
     return String(entier ? Math.round(n) : Math.round(n * 10) / 10);
   }
   function bornesMesures(p) {
+    // Une taille saisie en metres (1,80) est d'abord convertie en centimetres.
+    var tm = parseFloat(String(p.taille == null ? "" : p.taille).replace(",", "."));
+    if (isFinite(tm) && tm > 0 && tm < 3) p.taille = String(Math.round(tm * 100));
     p.taille = borneMesure(p.taille, 100, 250, true);
     p.poids = borneMesure(p.poids, 30, 300, false);
     p.age = borneMesure(p.age, 14, 100, true);
@@ -144,15 +147,10 @@
       try {
         var s = JSON.parse(brut);
         if (s && Array.isArray(s.profils) && s.profils.length) {
-          var corrige = false;
-          s.profils.forEach(function (q) {
-            var avant = JSON.stringify([q.taille, q.poids, q.age]);
-            normaliser(q);
-            if (JSON.stringify([q.taille, q.poids, q.age]) !== avant) corrige = true;
-          });
+          // v35.2 : les bornes s'appliquent en memoire (normaliser) mais rien n'est reecrit au chargement ;
+          // la valeur corrigee est enregistree quand le profil est sauvegarde depuis le formulaire (champ reaffiche).
+          s.profils.forEach(normaliser);
           if (!s.actif) s.actif = s.profils[0].id;
-          // v35.2 : si des mesures hors limites ont ete corrigees au chargement, la correction est enregistree.
-          if (corrige) { try { localStorage.setItem(CLE, JSON.stringify(s)); } catch (e) {} }
           return s;
         }
       } catch (e) {}

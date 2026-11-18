@@ -161,10 +161,18 @@ ok("pas-d-indice-halteres",paras.indexOf("quelques euros")===-1);
 # T17 : mesures bornées au chargement et à la saisie (v35.2 : taille 100-250, poids 30-300, âge 14-100)
 page2('T17',{'taille':'999','poids':'5','age':'200'},r'''
 location.hash="#/profil";await sleep(300);
-ok("charge-bornes",PROF().taille==="250"&&PROF().poids==="30"&&PROF().age==="100");
 ok("champs-bornes",document.getElementById("taille").value==="250"&&document.getElementById("poids").value==="30"&&document.getElementById("age").value==="100");
+ok("stock-brut-garde",PROF().taille==="999"&&PROF().poids==="5"&&PROF().age==="200");
 document.getElementById("taille").value="50";document.getElementById("poids").value="999";document.getElementById("age").value="3";
 document.querySelector("#vue form button[type=submit]").click();await sleep(300);
 ok("saisie-bornes",PROF().taille==="100"&&PROF().poids==="300"&&PROF().age==="14");
 ok("reflète-bornes",document.getElementById("taille").value==="100"&&document.getElementById("poids").value==="300"&&document.getElementById("age").value==="14");
+''')
+# T18 : taille saisie en mètres convertie en cm (revue secu v35.2)
+page2('T18',{'taille':'1.82','poids':'75','age':'30'},r'''
+location.hash="#/profil";await sleep(300);
+ok("metres-affiches-cm",document.getElementById("taille").value==="182");
+document.getElementById("taille").value="1,68";
+document.querySelector("#vue form button[type=submit]").click();await sleep(300);
+ok("metres-enregistres-cm",PROF().taille==="168");
 ''')
