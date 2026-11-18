@@ -469,7 +469,7 @@
       h += '<p class="legende"><span class="l1"></span> pesées <span class="l2"></span> moyenne sur 7 jours</p>';
       var ecart = Math.round((der.y - log[0].y) * 10) / 10;
       h += "<p>Dernier : <strong>" + esc(der.y) + " kg</strong> (" + esc(dateCourte(der.d)) + "). Moyenne 7 jours : " + (Math.round(dm.y * 10) / 10) + " kg.<br>Depuis le " + esc(dateCourte(log[0].d)) + " : " + (ecart > 0 ? "+" : "") + ecart + " kg.</p>";
-      h += '<p class="doux">Pour une prise de masse progressive, regarde plutôt la tendance sur plusieurs semaines que la valeur d\'un jour.</p>';
+      h += '<p class="doux">Pour une progression en douceur, regarde plutôt la tendance sur plusieurs semaines que la valeur d\'un jour.</p>';
     }
     h += "</div>";
     // progression par exercice
@@ -605,16 +605,18 @@
   function messageRepas(p, repas) {
     var l = repasCompatibles(p), c = parMoment(l), n = besoins(p), cible = n ? n.cible : objectifDe(p).kcalType, prot = n ? n.proteines : 0, kcal = 0, pr = 0;
     repas.forEach(function (r) { kcal += r.kcal; pr += r.prot; });
-    var manque = c.pd.length < 1 || c.pl.length < 2 || c.co.length < 1, loinK = kcal < cible * 0.9, loinP = prot > 0 && pr < prot * 0.9;
-    if (!manque && !loinK && !loinP) return "";
+    var manque = c.pd.length < 1 || c.pl.length < 2 || c.co.length < 1, loinK = kcal < cible * 0.9, loinHaut = kcal > cible * 1.1, loinP = prot > 0 && pr < prot * 0.9;
+    if (!manque && !loinK && !loinHaut && !loinP) return "";
     var t;
     if (alim(p).exclus.length) {
       t = (manque || loinK ? "Pas assez de repas compatibles avec tes exclusions : " + pluriel(l.length, "repas disponible", "repas disponibles") + " (" + pluriel(c.pd.length, "petit-déjeuner", "petits-déjeuners") + ", " + c.pl.length + " repas, " + pluriel(c.co.length, "collation", "collations") + ")." : "Avec tes exclusions, " + pluriel(l.length, "repas compatible", "repas compatibles") + ".");
       if (loinK) t += " Cible d'environ " + cible + " kcal non atteinte (≈ " + kcal + " kcal proposées).";
+      if (loinHaut) t += " Les repas proposés dépassent ta cible : ≈ " + kcal + " kcal pour environ " + cible + " kcal visées.";
       if (loinP) t += " Protéines : ≈ " + pr + " g sur " + prot + " g visés.";
-      t += " Aucun repas exclu n'est ajouté pour compléter : augmente les portions ou assouplis tes exclusions dans le profil.";
+      if (loinHaut && !loinK) t += " Réduis les portions ou retire la collation pour rester proche de ton objectif.";
+      else t += " Aucun repas exclu n'est ajouté pour compléter : augmente les portions ou assouplis tes exclusions dans le profil.";
     } else {
-      t = (loinK ? "Cible d'environ " + cible + " kcal non atteinte avec les repas proposés (≈ " + kcal + " kcal)." : "") + (loinP ? " Protéines : ≈ " + pr + " g sur " + prot + " g visés." : "") + " Augmente un peu les portions.";
+      t = (loinK ? "Cible d'environ " + cible + " kcal non atteinte avec les repas proposés (≈ " + kcal + " kcal)." : "") + (loinHaut ? " Les repas proposés dépassent ta cible : ≈ " + kcal + " kcal pour environ " + cible + " kcal visées." : "") + (loinP ? " Protéines : ≈ " + pr + " g sur " + prot + " g visés." : "") + (loinHaut && !loinK ? " Réduis les portions ou retire la collation pour rester proche de ton objectif." : " Augmente un peu les portions.");
     }
     return '<div class="alerte" role="status">' + esc(t.trim()) + "</div>";
   }
@@ -648,7 +650,7 @@
   function blocAleatoire(p, faits) {
     var a = p.aleatoire && p.aleatoire.date === aujourdhui() ? p.aleatoire : null;
     var h = '<div class="carte verre" id="alea">';
-    h += '<p class="doux">Un exercice par groupe musculaire, tiré au hasard dans ta bibliothèque selon ton matériel, avec des repas pour la prise de masse.</p>';
+    h += '<p class="doux">Un exercice par groupe musculaire, tiré au hasard dans ta bibliothèque selon ton matériel, avec des repas adaptés à ton objectif.</p>';
     h += '<button data-alea="1">' + (a ? "Régénérer" : "Générer une séance aléatoire") + "</button>";
     if (a) {
       var exos = a.exos.map(exoParId).filter(Boolean);
@@ -883,7 +885,7 @@
       h += '<div class="exo verre">' + vignette(e) + '<div class="corps"><a href="#/exercice/' + e.id + '"><strong>' + esc(e.nom) + "</strong></a><div class=\"doux\">" + esc(e.series) + "</div>" + infoSeries(p, e) + "</div>" +
         '<button class="' + (fait ? "second" : "") + '" data-valider="' + e.id + '" aria-pressed="' + fait + '" aria-label="' + (fait ? "Validé : " : "Valider : ") + esc(e.nom) + '">' + (fait ? "Validé ✓" : "Valider") + "</button></div>";
     });
-    if (s.focus === "Tirer" && p.materiel.indexOf("elastique") === -1) h += '<p class="doux" style="margin:6px 4px 0">Sans matériel, le rowing inversé sous une table et les exercices au sol font déjà bien le travail. Avec un élastique de résistance (quelques euros), trois autres tirages s\'ouvrent : rowing assis, tirage vertical et face pull.</p>';
+    if (s.focus === "Tirer" && ["elastique", "halteres", "sangles", "barre"].every(function (m) { return p.materiel.indexOf(m) === -1; })) h += '<p class="doux" style="margin:6px 4px 0">Sans matériel, le rowing inversé sous une table et les exercices au sol font déjà bien le travail. Avec un élastique de résistance (quelques euros), deux autres tirages s\'ouvrent : rowing assis et curl. Avec un élastique et une barre de traction ou un ancrage en hauteur, aussi le tirage vertical et le face pull.</p>';
     h += blocRetourCalme(grp);
     h += blocChanger(p);
     var n = besoins(p);

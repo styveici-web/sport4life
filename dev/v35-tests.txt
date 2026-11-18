@@ -137,3 +137,22 @@ var ri=EXERCICES.find(function(x){return x.id==="rowing-inverse";});
 ok("rowing-inverse-toujours-faisable",ri.requis.length===0);
 ''')
 page2('S4',{'materiel':[]},'location.hash="#/aujourdhui";await sleep(400);window.scrollTo(0,0);')
+page2('T14',{'objectif':'seche','sexe':'f','taille':'165','poids':'60','age':'30','activite':'1.2'},r'''
+// Revue v35 : en seche avec une petite cible, les repas dépassent la cible -> avertissement par le haut
+location.hash="#/repas";await sleep(500);
+var paras=[].map.call(document.querySelectorAll("p,.alerte"),function(x){return x.textContent;}).join(" ");
+ok("depasse-signale",paras.indexOf("dépassent ta cible")>-1);
+ok("pas-de-augmente-portions",paras.indexOf("Augmente un peu les portions")===-1);
+''')
+page2('T15',{'objectif':'masse','sexe':'h','taille':'185','poids':'90','age':'28','activite':'1.725'},r'''
+// En masse avec une grosse cible : aucun avertissement de dépassement
+location.hash="#/repas";await sleep(500);
+var paras=[].map.call(document.querySelectorAll("p,.alerte"),function(x){return x.textContent;}).join(" ");
+ok("pas-de-depasse",paras.indexOf("dépassent ta cible")===-1);
+''')
+page2('T16',{'materiel':["halteres"]},r'''
+// Jour Tirer avec haltères : plus d'indice d'achat « Sans matériel » (revue v35)
+location.hash="#/aujourdhui";await sleep(400);
+var paras=[].map.call(document.querySelectorAll("p"),function(x){return x.textContent;}).join(" ");
+ok("pas-d-indice-halteres",paras.indexOf("quelques euros")===-1);
+''')
